@@ -352,7 +352,9 @@
     $$('.tag').forEach((t) => t.classList.toggle('is-on', t.dataset.tag === (entry.tag || '')));
 
     $('#editor').hidden = false;
-    if (window.matchMedia('(max-width: 620px)').matches) $('#scrim').hidden = false;
+    document.body.classList.add('editing');   // 넓은 화면에서 달력을 옆으로 밀어낸다
+    // 밀어낼 자리가 없어 달력 위에 겹쳐 뜨는 화면에서만 뒤를 어둡게 한다
+    if (!window.matchMedia('(min-width: 1100px)').matches) $('#scrim').hidden = false;
     location.hash = s;
     setTimeout(() => $('#edText').focus(), 30);
   }
@@ -370,6 +372,7 @@
     persist(true);
     selected = null;
     $('#editor').hidden = true;
+    document.body.classList.remove('editing');
     $('#scrim').hidden = true;
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     render();
