@@ -126,6 +126,23 @@
   /* 실제로 내용이 있는 날만 센다 (빈 항목은 지운 흔적일 뿐이다) */
   const filledDays = () => Object.keys(store.days).filter((k) => store.days[k].text);
 
+  // ---------- 글자 크기 ----------
+  // 화면 배율은 기기마다 취향이 달라 동기화하지 않고 이 브라우저에만 둔다
+  const FS_KEY = 'cal.fs.v1';
+
+  function applyFontScale(v) {
+    const fs = String(Number(v) || 1);
+    document.documentElement.style.setProperty('--fs', fs);
+    $$('.fsbtns button').forEach((b) => b.classList.toggle('is-on', b.dataset.fs === fs));
+    try { localStorage.setItem(FS_KEY, fs); } catch { /* 저장 못해도 이번 세션은 적용된다 */ }
+  }
+
+  function loadFontScale() {
+    let v = '1';
+    try { v = localStorage.getItem(FS_KEY) || '1'; } catch { /* 기본값으로 간다 */ }
+    applyFontScale(v);
+  }
+
   // ---------- dom helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -630,6 +647,9 @@
     const seg = e.target.closest('.segbtn');
     if (seg) { view = seg.dataset.view; render(); return; }
 
+    const fs = e.target.closest('.fsbtns button');
+    if (fs) { applyFontScale(fs.dataset.fs); return; }
+
     const tag = e.target.closest('.tag');
     if (tag && selected) {
       $$('.tag').forEach((t) => t.classList.toggle('is-on', t === tag));
@@ -789,6 +809,7 @@
   });
 
   // ---------- boot ----------
+  loadFontScale();
   load();
   loadSync();
   setSyncState(syncOn() ? 'ok' : 'off', syncOn() ? '대기 중' : '');
