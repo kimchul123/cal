@@ -1,0 +1,16 @@
+# 개인 기록은 저장소에 올리지 않습니다
+data-local/
+*.json.bak
+calendar-backup-*.json
+
+# 엑셀 원본 및 임시파일
+*.xlsx
+*.xlsm
+~$*
+
+# OS / 편집기
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

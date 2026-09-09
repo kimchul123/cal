@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>개인 캘린더</title>
+<meta name="description" content="날짜별로 자유롭게 기록하는 개인 캘린더">
+<meta name="theme-color" content="#1f6feb">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🗓️</span>
+    <h1>개인 캘린더</h1>
+  </div>
+
+  <div class="nav">
+    <button class="icon" id="btnPrev" title="이전 (←)" aria-label="이전">‹</button>
+    <button class="today" id="btnToday">오늘</button>
+    <button class="icon" id="btnNext" title="다음 (→)" aria-label="다음">›</button>
+    <h2 id="periodLabel" class="period">—</h2>
+  </div>
+
+  <div class="tools">
+    <div class="seg" role="tablist" aria-label="보기 전환">
+      <button class="segbtn is-on" data-view="month" role="tab">월간</button>
+      <button class="segbtn" data-view="week" role="tab">주간</button>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="기록 검색…" autocomplete="off" aria-label="기록 검색">
+    </div>
+    <details class="menu">
+      <summary class="icon" title="더보기" aria-label="더보기">⋯</summary>
+      <div class="menupanel">
+        <button id="btnExport">JSON 내보내기 (백업)</button>
+        <button id="btnImport">JSON 가져오기</button>
+        <button id="btnStats">기록 통계 보기</button>
+        <hr>
+        <button id="btnWipe" class="danger">모든 기록 지우기</button>
+      </div>
+    </details>
+    <input type="file" id="fileIn" accept="application/json,.json" hidden>
+  </div>
+</header>
+
+<main id="main">
+  <section id="viewMonth" class="view"></section>
+  <section id="viewWeek" class="view" hidden></section>
+  <section id="viewSearch" class="view" hidden></section>
+</main>
+
+<aside id="editor" class="editor" hidden aria-label="기록 편집">
+  <div class="ed-head">
+    <div>
+      <div class="ed-date" id="edDate">—</div>
+      <div class="ed-sub" id="edSub"></div>
+    </div>
+    <button class="icon" id="edClose" title="닫기 (Esc)" aria-label="닫기">✕</button>
+  </div>
+
+  <div class="ed-tags" role="group" aria-label="표시">
+    <button class="tag" data-tag="" title="일반">일반</button>
+    <button class="tag t-important" data-tag="important" title="중요">중요</button>
+    <button class="tag t-holiday" data-tag="holiday" title="휴일 · 개인일정">휴일</button>
+    <button class="tag t-done" data-tag="done" title="완료">완료</button>
+  </div>
+
+  <textarea id="edText" placeholder="오늘 있었던 일, 할 일, 메모를 자유롭게 적으세요.&#10;&#10;1&#10;2&#10;3"></textarea>
+
+  <div class="ed-foot">
+    <span class="hint" id="edStatus">자동 저장됩니다</span>
+    <div class="ed-actions">
+      <button id="edTemplate" class="ghost" title="1~6 번호 목록 넣기">번호목록</button>
+      <button id="edClear" class="ghost danger">비우기</button>
+    </div>
+  </div>
+</aside>
+
+<div id="scrim" class="scrim" hidden></div>
+
+<dialog id="dlg">
+  <div class="dlg-body" id="dlgBody"></div>
+  <form method="dialog"><button class="ghost">닫기</button></form>
+</dialog>
+
+<script src="assets/holidays.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
