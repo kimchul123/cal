@@ -6,25 +6,47 @@
   'use strict';
 
   const KEY = 'cal.diary.v1';
+  const SYNC_KEY = 'cal.sync.v1';
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
   const TAGS = ['', 'important', 'holiday', 'done'];
 
   // ---------- state ----------
-  let store = { version: 1, days: {}, weeks: {} };
+  // days/weeks 의 각 항목은 { text, tag, t } 형태다. t 는 마지막으로 고친 시각(ms)으로,
+  // 두 PC 의 기록을 합칠 때 어느 쪽이 최신인지 판단하는 유일한 근거다.
+  let store = { version: 2, days: {}, weeks: {} };
   let view = 'month';
   let cursor = new Date();          // 화면에 보이는 기준 날짜
   let selected = null;              // 편집 중인 날짜 (ISO)
   let query = '';
 
   // ---------- storage ----------
+
+  /* 예전 형식({text,tag} 또는 문자열)도 읽을 수 있게 항상 {text,tag,t} 로 맞춘다.
+     예전 기록의 t 는 0 이라 새로 고친 쪽이 항상 이긴다. */
+  function normEntry(v) {
+    if (typeof v === 'string') return { text: v, tag: '', t: 0 };
+    if (!v || typeof v !== 'object' || typeof v.text !== 'string') return null;
+    return { text: v.text, tag: v.tag || '', t: Number(v.t) || 0 };
+  }
+
+  function normMap(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(o || {})) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+      const e = normEntry(v);
+      if (e) out[k] = e;
+    }
+    return out;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return;
       const o = JSON.parse(raw);
       if (o && typeof o === 'object') {
-        store.days = o.days || {};
-        store.weeks = o.weeks || {};
+        store.days = normMap(o.days);
+        store.weeks = normMap(o.weeks);
       }
     } catch (e) {
       console.warn('저장된 기록을 읽지 못했습니다.', e);
@@ -41,6 +63,7 @@
         localStorage.setItem(KEY, JSON.stringify(store));
         dirty = false;
         flashSaved();
+        if (!syncing) scheduleSync();
       } catch (e) {
         console.error(e);
         alert('저장에 실패했습니다. 브라우저 저장공간이 가득 찼을 수 있습니다.\n' +
@@ -85,21 +108,23 @@
   // ---------- data accessors ----------
   const getDay = (s) => store.days[s] || null;
 
-  function setDay(s, text, tag) {
-    const t = (text || '').replace(/\s+$/, '');
-    const cur = store.days[s];
+  /* 비워도 항목을 지우지 않고 빈 채로 남긴다. 그래야 "지웠다"는 사실이
+     다른 PC 로 전달된다. 한 번도 쓴 적 없는 날만 실제로 지운다. */
+  function write(map, s, text, tag) {
+    const body = (text || '').replace(/\s+$/, '');
+    const cur = map[s];
     const nextTag = tag !== undefined ? tag : (cur ? cur.tag : '');
-    if (!t && !nextTag) delete store.days[s];
-    else store.days[s] = { text: t, tag: nextTag || '' };
+    if (!body && !nextTag && !cur) return;
+    if (cur && cur.text === body && cur.tag === (nextTag || '')) return;
+    map[s] = { text: body, tag: nextTag || '', t: Date.now() };
     persist();
   }
 
-  function setWeek(s, text) {
-    const t = (text || '').replace(/\s+$/, '');
-    if (!t) delete store.weeks[s];
-    else store.weeks[s] = t;
-    persist();
-  }
+  const setDay = (s, text, tag) => write(store.days, s, text, tag);
+  const setWeek = (s, text) => write(store.weeks, s, text, '');
+
+  /* 실제로 내용이 있는 날만 센다 (빈 항목은 지운 흔적일 뿐이다) */
+  const filledDays = () => Object.keys(store.days).filter((k) => store.days[k].text);
 
   // ---------- dom helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -183,7 +208,7 @@
     const goal = el('div', 'wk-goal');
     goal.innerHTML = '<div class="lab">주간목표</div>';
     const gta = el('textarea');
-    gta.value = store.weeks[sIso] || '';
+    gta.value = (store.weeks[sIso] || {}).text || '';
     gta.placeholder = '이번 주에 꼭 해야 할 일';
     gta.addEventListener('input', () => setWeek(sIso, gta.value));
     goal.appendChild(gta);
@@ -368,38 +393,212 @@
       const n = Object.keys(days).length;
       if (!confirm(`${n}일의 기록을 가져옵니다.\n같은 날짜는 가져온 내용으로 덮어씁니다.\n계속할까요?`)) return;
 
-      for (const [k, v] of Object.entries(days)) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
-        if (typeof v === 'string') store.days[k] = { text: v, tag: '' };
-        else if (v && typeof v.text === 'string') store.days[k] = { text: v.text, tag: v.tag || '' };
-      }
-      if (o.weeks && typeof o.weeks === 'object') {
-        for (const [k, v] of Object.entries(o.weeks)) {
-          if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === 'string') store.weeks[k] = v;
-        }
-      }
+      // 가져온 쪽을 그대로 쓰되, 지금 시각을 찍어 다른 PC 로도 이 내용이 퍼지게 한다
+      const now = Date.now();
+      Object.assign(store.days, normMap(days));
+      Object.assign(store.weeks, normMap(o.weeks));
+      for (const k of Object.keys(normMap(days))) store.days[k].t = now;
+      for (const k of Object.keys(normMap(o.weeks))) store.weeks[k].t = now;
+
       persist(true);
       render();
-      alert(`가져오기 완료 — 총 ${Object.keys(store.days).length}일의 기록이 있습니다.`);
+      alert(`가져오기 완료 — 총 ${filledDays().length}일의 기록이 있습니다.`);
+      scheduleSync();
     };
     rd.readAsText(file, 'utf-8');
+  }
+
+  // ---------- GitHub 동기화 ----------
+  // 기록을 내 비공개 저장소의 JSON 파일 하나에 보관한다.
+  // 올리기 전에 반드시 먼저 내려받아 합치므로, 다른 PC 가 쓴 내용을 덮어쓰지 않는다.
+
+  let sync = { repo: '', token: '', path: 'diary.json' };
+  let syncing = false;
+  let syncTimer = null;
+
+  function loadSync() {
+    try {
+      const o = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}');
+      sync = { repo: o.repo || '', token: o.token || '', path: o.path || 'diary.json' };
+    } catch { /* 설정이 깨졌으면 그냥 꺼진 상태로 시작한다 */ }
+  }
+
+  const syncOn = () => Boolean(sync.repo && sync.token);
+
+  function saveSync() {
+    try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { console.error(e); }
+  }
+
+  function setSyncState(state, note) {
+    const chip = $('#syncChip');
+    chip.dataset.state = state;
+    $('#syncText').textContent = {
+      off: '동기화 꺼짐',
+      syncing: '동기화 중…',
+      ok: note || '동기화됨',
+      error: note || '동기화 실패',
+    }[state] || state;
+    chip.title = state === 'off'
+      ? '기기 간 동기화 설정 — 회사 PC와 집 PC에서 같은 기록 보기'
+      : `${sync.repo}/${sync.path}${note ? ' — ' + note : ''}`;
+  }
+
+  // atob/btoa 는 바이트 단위라 한글이 깨진다. UTF-8 로 직접 바꿔 준다.
+  function b64encode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+
+  function b64decode(b64) {
+    const bin = atob(String(b64).replace(/\s/g, ''));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+
+  async function gh(method, extra) {
+    const url = `https://api.github.com/repos/${sync.repo}/contents/${sync.path}`;
+    const res = await fetch(method === 'GET' ? `${url}?ref=HEAD&t=${Date.now()}` : url, {
+      method,
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${sync.token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: extra ? JSON.stringify(extra) : undefined,
+    });
+    if (res.status === 404 && method === 'GET') return null;   // 첫 동기화라 파일이 아직 없다
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '');
+      const e = new Error(`GitHub ${res.status}`);
+      e.status = res.status;
+      e.detail = msg.slice(0, 300);
+      throw e;
+    }
+    return res.json();
+  }
+
+  /* contents API 는 1MB 가 넘는 파일의 내용을 돌려주지 않는다(content 가 빈 값).
+     기록이 쌓여 그 선을 넘으면 blob API 로 받아온다. */
+  async function fileContent(file) {
+    if (file.content) return b64decode(file.content);
+    const res = await fetch(`https://api.github.com/repos/${sync.repo}/git/blobs/${file.sha}`, {
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${sync.token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+    if (!res.ok) throw Object.assign(new Error(`GitHub ${res.status}`), { status: res.status });
+    const blob = await res.json();
+    return b64decode(blob.content);
+  }
+
+  /** 최신인 쪽만 남기고 합친다. 같은 날을 양쪽에서 고쳤다면 나중에 고친 쪽이 이긴다. */
+  function mergeInto(target, incoming) {
+    let changed = false;
+    for (const [k, v] of Object.entries(incoming)) {
+      const cur = target[k];
+      if (!cur || v.t > cur.t) { target[k] = v; changed = true; }
+    }
+    return changed;
+  }
+
+  const fingerprint = (m) =>
+    Object.keys(m).sort().map((k) => `${k}:${m[k].t}:${m[k].text.length}:${m[k].tag}`).join('|');
+
+  async function syncNow(manual) {
+    if (!syncOn()) { if (manual) openSyncDialog(); return; }
+    if (syncing) return;
+    syncing = true;
+    setSyncState('syncing');
+
+    try {
+      const file = await gh('GET');
+      let remote = { days: {}, weeks: {} };
+      if (file) {
+        const raw = await fileContent(file);
+        let o;
+        try { o = JSON.parse(raw); }
+        catch { throw new Error(`${sync.path} 을 읽지 못했습니다 (JSON 형식 오류)`); }
+        remote = { days: normMap(o.days), weeks: normMap(o.weeks) };
+      }
+
+      const before = fingerprint(store.days) + '#' + fingerprint(store.weeks);
+      const pulled = mergeInto(store.days, remote.days) | mergeInto(store.weeks, remote.weeks);
+      const after = fingerprint(store.days) + '#' + fingerprint(store.weeks);
+
+      if (pulled) { persist(true); if (!selected) render(); }
+
+      const remoteFp = fingerprint(remote.days) + '#' + fingerprint(remote.weeks);
+      if (after !== remoteFp) {
+        const payload = {
+          version: 2,
+          app: 'kimchul123/cal',
+          updatedAt: new Date().toISOString(),
+          days: store.days,
+          weeks: store.weeks,
+        };
+        await gh('PUT', {
+          message: `기록 갱신 ${new Date().toLocaleString('ko-KR')}`,
+          content: b64encode(JSON.stringify(payload, null, 1)),
+          sha: file ? file.sha : undefined,
+        });
+      }
+
+      const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      setSyncState('ok', `${time} 동기화`);
+      if (before !== after && manual) alert('다른 기기의 기록을 받아왔습니다.');
+    } catch (e) {
+      console.error(e);
+      let note = '동기화 실패';
+      if (e.status === 401) note = '토큰이 올바르지 않음';
+      else if (e.status === 403) note = '토큰 권한 부족';
+      else if (e.status === 404) note = '저장소를 찾을 수 없음';
+      else if (e.status === 409 || e.status === 422) note = '충돌 — 다시 시도하세요';
+      else if (e.name === 'TypeError') note = '네트워크 오프라인';
+      setSyncState('error', note);
+      if (manual) alert(`동기화하지 못했습니다: ${note}\n\n${e.detail || e.message}`);
+    } finally {
+      syncing = false;
+    }
+  }
+
+  /** 글을 고친 뒤 잠시 기다렸다가 한 번만 올린다 (타이핑마다 올리지 않는다) */
+  function scheduleSync() {
+    if (!syncOn()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => syncNow(false), 4000);
+  }
+
+  function openSyncDialog() {
+    $('#syncRepo').value = sync.repo;
+    $('#syncToken').value = sync.token;
+    $('#syncMsg').hidden = true;
+    $('#dlgSync').showModal();
   }
 
   function showStats() {
     const byYear = {};
     let chars = 0;
-    for (const [s, v] of Object.entries(store.days)) {
+    for (const s of filledDays()) {
       const y = s.slice(0, 4);
       byYear[y] = (byYear[y] || 0) + 1;
-      chars += (v.text || '').length;
+      chars += store.days[s].text.length;
     }
     const years = Object.keys(byYear).sort();
     const rows = years.map((y) => `<tr><td>${y}년</td><td>${byYear[y]}일</td></tr>`).join('');
 
     $('#dlgBody').innerHTML =
       '<h3>기록 통계</h3>' +
-      `<table><tr><td>전체 기록</td><td>${Object.keys(store.days).length}일</td></tr>` +
-      `<tr><td>주간목표</td><td>${Object.keys(store.weeks).length}주</td></tr>` +
+      `<table><tr><td>전체 기록</td><td>${filledDays().length}일</td></tr>` +
+      `<tr><td>주간목표</td><td>${Object.keys(store.weeks).filter((k) => store.weeks[k].text).length}주</td></tr>` +
       `<tr><td>총 글자수</td><td>${chars.toLocaleString('ko-KR')}자</td></tr>` +
       rows + '</table>';
     $('#dlg').showModal();
@@ -469,13 +668,60 @@
     if (!selected) return;
     if (!confirm(`${fmtLong(selected)} 기록을 비울까요?`)) return;
     $('#edText').value = '';
-    delete store.days[selected];
+    setDay(selected, '', '');
     persist(true);
     $$('.tag').forEach((t) => t.classList.toggle('is-on', t.dataset.tag === ''));
     refreshCell(selected);
   };
 
   $('#q').addEventListener('input', (e) => { query = e.target.value; render(); });
+
+  $('#syncChip').onclick = openSyncDialog;
+  $('#btnSync').onclick = () => { $('.menu').open = false; openSyncDialog(); };
+  $('#btnSyncNow').onclick = () => { $('.menu').open = false; syncNow(true); };
+
+  $('#syncSave').onclick = async (e) => {
+    e.preventDefault();
+    const repo = $('#syncRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, '');
+    const token = $('#syncToken').value.trim();
+    const msg = $('#syncMsg');
+
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      msg.hidden = false; msg.className = 'msg bad';
+      msg.textContent = '저장소는 kimchul123/cal-data 처럼 "계정/저장소" 형태로 적어 주세요.';
+      return;
+    }
+    if (!token) {
+      msg.hidden = false; msg.className = 'msg bad';
+      msg.textContent = '액세스 토큰을 넣어 주세요.';
+      return;
+    }
+
+    sync.repo = repo;
+    sync.token = token;
+    saveSync();
+
+    msg.hidden = false; msg.className = 'msg';
+    msg.textContent = '연결을 확인하는 중…';
+    await syncNow(false);
+
+    if ($('#syncChip').dataset.state === 'ok') {
+      msg.className = 'msg good';
+      msg.textContent = `연결됐습니다. 이제 이 브라우저는 ${repo} 와 자동으로 기록을 주고받습니다.`;
+    } else {
+      msg.className = 'msg bad';
+      msg.textContent = `연결하지 못했습니다 — ${$('#syncText').textContent}. 저장소 이름과 토큰 권한을 확인해 주세요.`;
+    }
+  };
+
+  $('#syncOff').onclick = (e) => {
+    e.preventDefault();
+    if (!confirm('이 브라우저의 동기화를 끄고 토큰을 지웁니다.\n기록 자체는 그대로 남습니다. 계속할까요?')) return;
+    sync = { repo: '', token: '', path: 'diary.json' };
+    try { localStorage.removeItem(SYNC_KEY); } catch { /* 지울 게 없으면 그만이다 */ }
+    setSyncState('off');
+    $('#dlgSync').close();
+  };
 
   $('#btnExport').onclick = () => { $('.menu').open = false; doExport(); };
   $('#btnImport').onclick = () => { $('.menu').open = false; $('#fileIn').click(); };
@@ -515,6 +761,12 @@
   // 저장할 게 없으면 쓰지 않는다. 탭을 두 개 열었을 때 오래된 사본으로 덮어쓰는 것을 막는다
   window.addEventListener('beforeunload', () => { if (dirty) persist(true); });
 
+  // 다른 PC 에서 쓴 내용을 받아오는 시점: 창을 다시 볼 때, 그리고 방금 고쳤을 때
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleSync();
+  });
+  window.addEventListener('online', () => scheduleSync());
+
   // 다른 탭에서 기록이 바뀌면 이 탭도 따라간다 (편집 중이면 건드리지 않는다)
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY || dirty || selected) return;
@@ -538,5 +790,8 @@
 
   // ---------- boot ----------
   load();
+  loadSync();
+  setSyncState(syncOn() ? 'ok' : 'off', syncOn() ? '대기 중' : '');
   if (!openFromHash()) render();
+  if (syncOn()) syncNow(false);
 })();

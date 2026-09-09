@@ -25,6 +25,9 @@
   </div>
 
   <div class="tools">
+    <button class="sync" id="syncChip" data-state="off" title="기기 간 동기화 설정">
+      <span class="dot"></span><span id="syncText">동기화 꺼짐</span>
+    </button>
     <div class="seg" role="tablist" aria-label="보기 전환">
       <button class="segbtn is-on" data-view="month" role="tab">월간</button>
       <button class="segbtn" data-view="week" role="tab">주간</button>
@@ -35,11 +38,14 @@
     <details class="menu">
       <summary class="icon" title="더보기" aria-label="더보기">⋯</summary>
       <div class="menupanel">
+        <button id="btnSync">기기 간 동기화 설정…</button>
+        <button id="btnSyncNow">지금 동기화</button>
+        <hr>
         <button id="btnExport">JSON 내보내기 (백업)</button>
         <button id="btnImport">JSON 가져오기</button>
         <button id="btnStats">기록 통계 보기</button>
         <hr>
-        <button id="btnWipe" class="danger">모든 기록 지우기</button>
+        <button id="btnWipe" class="danger">이 브라우저의 기록 지우기</button>
       </div>
     </details>
     <input type="file" id="fileIn" accept="application/json,.json" hidden>
@@ -84,6 +90,50 @@
 <dialog id="dlg">
   <div class="dlg-body" id="dlgBody"></div>
   <form method="dialog"><button class="ghost">닫기</button></form>
+</dialog>
+
+<dialog id="dlgSync">
+  <div class="dlg-body">
+    <h3>기기 간 동기화</h3>
+    <p class="note">
+      회사 PC와 집 PC에서 같은 기록을 보려면, 기록을 <b>내 비공개 GitHub 저장소</b>에
+      보관하면 됩니다. 아래 두 칸만 채우면 이 브라우저가 그 저장소와 자동으로 주고받습니다.
+    </p>
+
+    <label class="f">
+      <span>저장소</span>
+      <input id="syncRepo" type="text" placeholder="kimchul123/cal-data" autocomplete="off" spellcheck="false">
+    </label>
+
+    <label class="f">
+      <span>액세스 토큰</span>
+      <input id="syncToken" type="password" placeholder="github_pat_… 또는 ghp_…" autocomplete="off" spellcheck="false">
+    </label>
+
+    <details class="how">
+      <summary>토큰 만드는 방법</summary>
+      <ol>
+        <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">
+          github.com/settings/personal-access-tokens/new</a> 를 엽니다</li>
+        <li><b>Repository access</b> → <i>Only select repositories</i> → 위에 적은 데이터 저장소를 고릅니다</li>
+        <li><b>Permissions</b> → <i>Repository permissions</i> → <b>Contents</b> 를 <b>Read and write</b> 로 바꿉니다</li>
+        <li>만들어진 토큰을 복사해 위 칸에 붙여넣습니다</li>
+      </ol>
+      <p class="warn">
+        토큰은 이 브라우저에만 저장되고 다른 곳으로 보내지 않습니다.
+        그래도 남의 PC나 공용 PC에서는 넣지 마시고, 쓰지 않게 되면 GitHub에서 토큰을 지워 주세요.
+      </p>
+    </details>
+
+    <div id="syncMsg" class="msg" hidden></div>
+  </div>
+
+  <div class="dlg-foot">
+    <button class="ghost danger" id="syncOff">연결 해제</button>
+    <span class="grow"></span>
+    <form method="dialog"><button class="ghost">닫기</button></form>
+    <button class="primary" id="syncSave">저장하고 연결</button>
+  </div>
 </dialog>
 
 <script src="assets/holidays.js"></script>
