@@ -625,7 +625,7 @@
   }
 
   // ---------- events ----------
-  function step(dir) {
+  function step(dir, axis) {
     if (view === 'month') {
       // 31일에서 setMonth 를 쓰면 다음 달을 건너뛰므로 항상 1일 기준으로 옮긴다
       cursor = new Date(cursor.getFullYear(), cursor.getMonth() + dir, 1);
@@ -633,7 +633,55 @@
       cursor = addDays(cursor, 7 * dir);
     }
     render();
+    if (axis) slideIn(axis, dir);
   }
+
+  /** 스와이프로 넘겼을 때 어느 쪽으로 움직였는지 눈에 보이게 한다 */
+  function slideIn(axis, dir) {
+    const el = view === 'month' ? $('#viewMonth') : $('#viewWeek');
+    const cls = `slide-${axis}${dir > 0 ? '-next' : '-prev'}`;
+    el.classList.remove('slide-y-next', 'slide-y-prev', 'slide-x-next', 'slide-x-prev');
+    void el.offsetWidth;                       // 애니메이션을 다시 시작시키기 위한 강제 리플로우
+    el.classList.add(cls);
+    el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+  }
+
+  /* 휴대폰에서 손가락으로 쓸어 달(주)을 넘긴다.
+     세로 스와이프는 화면이 스크롤되지 않을 때만 쓴다. 스크롤을 뺏으면 안 되기 때문이다. */
+  (function enableSwipe() {
+    const MIN = 45;        // 이만큼은 움직여야 스와이프로 인정한다
+    const MAX_MS = 800;
+    let x0 = 0, y0 = 0, t0 = 0, on = false;
+    const area = $('#main');
+
+    area.addEventListener('touchstart', (e) => {
+      on = false;
+      if (e.touches.length !== 1) return;                       // 두 손가락은 확대/축소다
+      if (!$('#editor').hidden || query.trim()) return;          // 편집 중 · 검색 중에는 넘기지 않는다
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      const t = e.touches[0];
+      x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); on = true;
+    }, { passive: true });
+
+    area.addEventListener('touchend', (e) => {
+      if (!on) return;
+      on = false;
+      if (Date.now() - t0 > MAX_MS) return;
+
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      const ax = Math.abs(dx), ay = Math.abs(dy);
+
+      if (ax > ay) {
+        if (ax > MIN) step(dx < 0 ? 1 : -1, 'x');     // 왼쪽으로 쓸면 다음
+      } else if (ay > MIN && !pageScrolls()) {
+        step(dy < 0 ? 1 : -1, 'y');                   // 위로 쓸면 다음
+      }
+    }, { passive: true });
+
+    const pageScrolls = () =>
+      document.documentElement.scrollHeight > window.innerHeight + 4;
+  })();
 
   document.addEventListener('click', (e) => {
     const cell = e.target.closest('.cell, .res');

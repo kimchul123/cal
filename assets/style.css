@@ -176,6 +176,18 @@ button, input, textarea { font: inherit; color: inherit; }
 #main { padding: 14px 16px 80px; }
 .view[hidden] { display: none; }
 
+/* 스와이프로 달을 넘겼을 때 방향이 보이도록 살짝 밀려 들어온다 */
+@media (prefers-reduced-motion: no-preference) {
+  .slide-y-next { animation: slideYNext .17s ease-out; }
+  .slide-y-prev { animation: slideYPrev .17s ease-out; }
+  .slide-x-next { animation: slideXNext .17s ease-out; }
+  .slide-x-prev { animation: slideXPrev .17s ease-out; }
+}
+@keyframes slideYNext { from { opacity: .3; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes slideYPrev { from { opacity: .3; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+@keyframes slideXNext { from { opacity: .3; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes slideXPrev { from { opacity: .3; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+
 /* ---------- month grid ---------- */
 .dow {
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
