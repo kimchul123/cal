@@ -143,6 +143,32 @@
     applyFontScale(v);
   }
 
+  // ---------- 편집창 너비 ----------
+  // 모니터 크기에 따라 다르므로 글자 크기와 마찬가지로 동기화하지 않고 이 브라우저에만 둔다
+  const EDW_KEY = 'cal.edw.v1';
+  const EDW_MIN = 320;
+
+  // 아무리 넓혀도 달력 쪽에 최소 480px 은 남긴다
+  const edwMax = () =>
+    Math.max(EDW_MIN, Math.min(window.innerWidth - 480, Math.round(window.innerWidth * 0.75)));
+
+  function applyEdWidth(px, save) {
+    const w = Math.round(Math.min(Math.max(px, EDW_MIN), edwMax()));
+    document.documentElement.style.setProperty('--edw', w + 'px');
+    if (save) { try { localStorage.setItem(EDW_KEY, String(w)); } catch { /* 저장 못해도 이번엔 적용된다 */ } }
+    return w;
+  }
+
+  function storedEdWidth() {
+    try { return Number(localStorage.getItem(EDW_KEY)) || 0; } catch { return 0; }
+  }
+
+  // 저장된 값이 없으면 손대지 않는다. 그래야 CSS 기본값(430px, 1700px 이상은 500px)이 그대로 쓰인다
+  function loadEdWidth() {
+    const v = storedEdWidth();
+    if (v) applyEdWidth(v, false);
+  }
+
   // ---------- dom helpers ----------
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -646,6 +672,55 @@
     el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
   }
 
+  /* 편집창 왼쪽 가장자리를 끌어 너비를 바꾼다. 왼쪽으로 끌수록 넓어진다. */
+  (function enableEdResize() {
+    const handle = $('#edResize');
+    let x0 = 0, w0 = 0, dragging = false;
+    const edWidth = () => $('#editor').getBoundingClientRect().width;
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (!window.matchMedia('(min-width: 1100px)').matches) return;
+      dragging = true;
+      x0 = e.clientX;
+      w0 = edWidth();
+      document.body.classList.add('resizing');
+      e.preventDefault();
+      // 커서가 손잡이를 벗어나도 따라오게 한다. 캡처가 안 되더라도 window 쪽에서 받는다
+      try { handle.setPointerCapture(e.pointerId); } catch { /* 캡처 없이도 동작한다 */ }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (dragging) applyEdWidth(w0 + (x0 - e.clientX), false);
+    });
+
+    function end(e) {
+      if (!dragging) return;
+      dragging = false;
+      try { handle.releasePointerCapture(e.pointerId); } catch { /* 이미 놓였으면 그만이다 */ }
+      document.body.classList.remove('resizing');
+      applyEdWidth(edWidth(), true);          // 끝났을 때 한 번만 저장한다
+    }
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+
+    handle.addEventListener('dblclick', () => {
+      try { localStorage.removeItem(EDW_KEY); } catch { /* 지울 게 없으면 그만이다 */ }
+      document.documentElement.style.removeProperty('--edw');
+    });
+
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      applyEdWidth(edWidth() + (e.key === 'ArrowLeft' ? 24 : -24), true);
+    });
+
+    // 창을 줄이면 저장해 둔 너비가 한도를 넘을 수 있다. 저장값은 그대로 두고 화면에만 맞춘다
+    window.addEventListener('resize', () => {
+      const v = storedEdWidth();
+      if (v) applyEdWidth(v, false);
+    });
+  })();
+
   /* 휴대폰에서 손가락으로 쓸어 달(주)을 넘긴다.
      세로 스와이프는 화면이 스크롤되지 않을 때만 쓴다. 스크롤을 뺏으면 안 되기 때문이다. */
   (function enableSwipe() {
@@ -861,6 +936,7 @@
 
   // ---------- boot ----------
   loadFontScale();
+  loadEdWidth();
   load();
   loadSync();
   setSyncState(syncOn() ? 'ok' : 'off', syncOn() ? '대기 중' : '');

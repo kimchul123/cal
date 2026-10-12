@@ -325,6 +325,34 @@ button, input, textarea { font: inherit; color: inherit; }
   body { transition: padding-right .14s ease; }
 }
 
+/* 왼쪽 가장자리를 끌어 편집창 너비를 조절한다 (밀어내기가 동작하는 넓은 화면에서만) */
+.ed-resize { display: none; }
+
+@media (min-width: 1100px) {
+  .ed-resize {
+    display: block; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 9px; cursor: col-resize; z-index: 2;
+  }
+  .ed-resize::before {           /* 집으면 파랗게 되는 세로선 */
+    content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 3px;
+    background: transparent; border-radius: 2px;
+  }
+  .ed-resize::after {            /* 잡는 곳임을 알리는 손잡이 */
+    content: ''; position: absolute; left: 2px; top: 50%; width: 5px; height: 38px;
+    transform: translateY(-50%); border-radius: 3px; opacity: 0;
+    background: repeating-linear-gradient(to bottom,
+      var(--ink-3) 0 2px, transparent 2px 5px);
+  }
+  .ed-resize:hover::after, .ed-resize:focus-visible::after { opacity: .9; }
+  .ed-resize:hover::before, .ed-resize:focus-visible::before,
+  body.resizing .ed-resize::before { background: var(--accent); }
+  .ed-resize:focus-visible { outline: none; }
+}
+
+/* 끄는 동안에는 글자가 선택되거나 폭이 뒤늦게 따라오지 않게 한다 */
+body.resizing { user-select: none; cursor: col-resize; }
+body.resizing, body.resizing * { transition: none !important; }
+
 .ed-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
   padding: 14px 16px 10px; border-bottom: 1px solid var(--line);
