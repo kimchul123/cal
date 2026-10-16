@@ -371,7 +371,9 @@ body.resizing, body.resizing * { transition: none !important; }
   padding: 14px 16px 10px; border-bottom: 1px solid var(--line);
 }
 .ed-date { font-size: calc(18px * var(--fs)); font-weight: 700; letter-spacing: -.3px; }
-.ed-sub { color: var(--ink-2); font-size: calc(13px * var(--fs)); margin-top: 2px; }
+/* "오늘 · 3일 후 · 공휴일 이름" 을 날짜 옆에 붙여 한 줄을 아낀다. 폭이 모자라면 아래로 내려간다 */
+.ed-title { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; min-width: 0; }
+.ed-sub { color: var(--ink-2); font-size: calc(13px * var(--fs)); }
 .ed-sub .hol { color: var(--sun); font-weight: 600; }
 
 .ed-tags { display: flex; gap: 6px; padding: 10px 16px; flex-wrap: wrap; }
