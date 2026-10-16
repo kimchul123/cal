@@ -510,8 +510,22 @@ dialog::backdrop { background: rgba(16,24,40,.4); }
   .dlg-body .f { grid-template-columns: 1fr; gap: 4px; }
 
   .editor {
-    top: auto; left: 0; height: 82vh; width: 100vw;
+    /* 메모 쓸 자리를 넓히려 거의 화면 끝까지 올린다. 위쪽 한 뼘은 남겨 아직 달력 위라는 걸 보여 준다.
+       dvh 는 주소창·키보드에 따라 바뀌는 실제 보이는 높이라, 지원하는 브라우저에서는 그쪽을 쓴다 */
+    top: auto; left: 0; height: 93vh; height: 93dvh; width: 100vw;
     border-left: 0; border-top: 1px solid var(--line-2);
     border-radius: 16px 16px 0 0;
   }
+
+  /* 표시 4개와 − 100% + 가 두 줄로 갈라지지 않게 한 줄에 맞춘다 */
+  .ed-tags { flex-wrap: nowrap; gap: 4px; padding: 8px 12px; align-items: center; }
+  .tag { flex: none; padding: 4px 8px; font-size: calc(12px * var(--fs)); white-space: nowrap; }
+  .ed-zoom { flex: none; }
+  .ed-zoom button { min-width: 32px; height: 30px; padding: 0 4px; }
+  #edFsVal { min-width: 40px; font-size: calc(11px * var(--fs)); }
+
+  /* 위아래 여백을 줄여 그만큼 메모 칸에 돌려준다 */
+  .ed-head { padding: 10px 12px 8px; }
+  #edText { margin: 0 12px; padding: 10px; }
+  .ed-foot { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
 }
