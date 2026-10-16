@@ -1047,13 +1047,88 @@
   $('#edFsUp').onclick = () => applyEdFont(edFont() + EDFS_STEP);
   $('#edFsVal').onclick = () => applyEdFont(1);
 
-  $('#edTemplate').onclick = () => {
-    const ta = $('#edText');
-    const base = ta.value.replace(/\s+$/, '');
-    ta.value = (base ? base + '\n' : '') + '1\n2\n3\n4\n5\n6';
+  // ---------- 체크박스 ----------
+  // 메모는 평범한 글자라 네모 상자도 글자(☐ ☑)로 넣는다. 그래야 달력 칸·검색·엑셀·동기화에
+  // 그대로 실려 간다. 상자를 누르면 ☐ ↔ ☑ 로 바뀐다.
+  const BOX = '☐', CHECKED = '☑';
+  const BOX_RE = /^(\s*)([☐☑]) ?/;
+
+  /* 글자를 바꾸되 되돌리기(Ctrl+Z)가 살아 있도록 가능하면 insertText 를 쓴다.
+     insertText 는 input 이벤트를 일으켜 저장까지 이어진다. 안 되는 브라우저에서는 직접 저장한다. */
+  function replaceText(ta, a, b, text, selA, selB) {
     ta.focus();
-    if (selected) { setDay(selected, ta.value, currentTag()); persist(true); }
-  };
+    ta.setSelectionRange(a, b);
+    let ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch { /* 아래에서 대신 넣는다 */ }
+    if (!ok || ta.value.slice(a, a + text.length) !== text) {
+      ta.setRangeText(text, a, b, 'end');
+      if (selected) { setDay(selected, ta.value, currentTag()); refreshCell(selected); }
+    }
+    ta.setSelectionRange(selA, selB);
+  }
+
+  /** 커서가 있는 줄(여러 줄을 골랐으면 그 줄들)에 상자를 붙이거나, 이미 다 붙어 있으면 뗀다 */
+  function toggleBoxes() {
+    const ta = $('#edText');
+    const v = ta.value;
+    const s0 = ta.selectionStart, s1 = ta.selectionEnd;
+    const a = v.lastIndexOf('\n', s0 - 1) + 1;
+    let b = v.indexOf('\n', s1 > s0 && v[s1 - 1] === '\n' ? s1 - 1 : s1);
+    if (b < 0) b = v.length;
+
+    const lines = v.slice(a, b).split('\n');
+    const filled = lines.filter((l) => l.trim());
+    const remove = filled.length > 0 && filled.every((l) => BOX_RE.test(l));
+    const out = lines.map((l) => {
+      if (remove) return l.replace(BOX_RE, '$1');
+      if (BOX_RE.test(l) || (lines.length > 1 && !l.trim())) return l;   // 여러 줄일 때 빈 줄은 건너뛴다
+      return l.replace(/^(\s*)/, `$1${BOX} `);
+    }).join('\n');
+
+    if (lines.length === 1) {
+      const caret = Math.max(a, s0 + out.length - (b - a));             // 커서는 같은 글자 뒤에 둔다
+      replaceText(ta, a, b, out, caret, caret);
+    } else {
+      replaceText(ta, a, b, out, a, a + out.length);
+    }
+  }
+
+  $('#edCheck').onclick = toggleBoxes;
+
+  // 상자 위를 누르면 체크/해제한다. 상자 바로 앞이나 뒤에 커서가 놓인 경우만 상자를 누른 것으로 본다
+  $('#edText').addEventListener('click', () => {
+    const ta = $('#edText');
+    if (ta.selectionStart !== ta.selectionEnd) return;
+    const v = ta.value, pos = ta.selectionStart;
+    const a = v.lastIndexOf('\n', pos - 1) + 1;
+    const m = BOX_RE.exec(v.slice(a, a + 8));
+    if (!m) return;
+    const at = a + m[1].length;                       // 상자 글자의 위치
+    if (pos !== at && pos !== at + 1) return;
+    const next = m[2] === BOX ? CHECKED : BOX;
+    replaceText(ta, at, at + 1, next, at + 2, at + 2);
+  });
+
+  // 상자 줄에서 Enter 를 치면 다음 줄에도 상자를 붙인다. 빈 상자 줄에서 치면 상자를 지운다
+  $('#edText').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    const ta = $('#edText');
+    if (ta.selectionStart !== ta.selectionEnd) return;
+    const v = ta.value, pos = ta.selectionStart;
+    const a = v.lastIndexOf('\n', pos - 1) + 1;
+    const line = v.slice(a, pos);
+    const m = BOX_RE.exec(line);
+    if (!m) return;
+    e.preventDefault();
+    let end = v.indexOf('\n', pos);
+    if (end < 0) end = v.length;
+    if (!line.slice(m[0].length).trim() && !v.slice(pos, end).trim()) {
+      replaceText(ta, a, pos, m[1], a + m[1].length, a + m[1].length);
+    } else {
+      const ins = `\n${m[1]}${BOX} `;
+      replaceText(ta, pos, pos, ins, pos + ins.length, pos + ins.length);
+    }
+  });
 
   $('#edClear').onclick = () => {
     if (!selected) return;
