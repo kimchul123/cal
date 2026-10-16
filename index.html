@@ -7,7 +7,7 @@
 <meta name="description" content="날짜별로 자유롭게 기록하는 개인 캘린더">
 <meta name="theme-color" content="#1f6feb">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=5">
+<link rel="stylesheet" href="assets/style.css?v=6">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
         <button id="btnSync">기기 간 동기화 설정…</button>
         <button id="btnSyncNow">지금 동기화</button>
         <hr>
+        <button id="btnXlsx">엑셀로 다운로드 (.xlsx)</button>
         <button id="btnExport">JSON 내보내기 (백업)</button>
         <button id="btnImport">JSON 가져오기</button>
         <button id="btnStats">기록 통계 보기</button>
@@ -86,6 +87,11 @@
     <button class="tag t-important" data-tag="important" title="중요">중요</button>
     <button class="tag t-holiday" data-tag="holiday" title="휴일 · 개인일정">휴일</button>
     <button class="tag t-done" data-tag="done" title="완료">완료</button>
+    <div class="ed-zoom" role="group" aria-label="메모 글자 크기">
+      <button id="edFsDown" title="메모 글자 작게 (Ctrl+-)" aria-label="메모 글자 작게">−</button>
+      <button id="edFsVal" title="기본 크기로" aria-label="메모 글자 크기 기본으로">100%</button>
+      <button id="edFsUp" title="메모 글자 크게 (Ctrl++)" aria-label="메모 글자 크게">+</button>
+    </div>
   </div>
 
   <textarea id="edText" placeholder="오늘 있었던 일, 할 일, 메모를 자유롭게 적으세요.&#10;&#10;1&#10;2&#10;3"></textarea>
@@ -150,7 +156,7 @@
   </div>
 </dialog>
 
-<script src="assets/holidays.js?v=5"></script>
-<script src="assets/app.js?v=5"></script>
+<script src="assets/holidays.js?v=6"></script>
+<script src="assets/app.js?v=6"></script>
 </body>
 </html>

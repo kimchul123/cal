@@ -143,14 +143,43 @@
     applyFontScale(v);
   }
 
+  // ---------- 메모 글자 크기 ----------
+  // 편집창 메모만 따로 키운다. 화면 전체 배율(--fs)과 곱해지므로 둘은 따로 논다.
+  // 눈과 화면 크기에 따른 취향이라 동기화하지 않고 이 브라우저에만 둔다.
+  const EDFS_KEY = 'cal.edfs.v1';
+  const EDFS_MIN = 0.7, EDFS_MAX = 2.5, EDFS_STEP = 0.1;
+
+  function applyEdFont(v) {
+    const n = Math.round(Math.min(Math.max(Number(v) || 1, EDFS_MIN), EDFS_MAX) * 10) / 10;
+    document.documentElement.style.setProperty('--edfs', String(n));
+    $('#edFsVal').textContent = Math.round(n * 100) + '%';
+    $('#edFsDown').disabled = n <= EDFS_MIN;
+    $('#edFsUp').disabled = n >= EDFS_MAX;
+    try { localStorage.setItem(EDFS_KEY, String(n)); } catch { /* 저장 못해도 이번엔 적용된다 */ }
+  }
+
+  const edFont = () =>
+    Number(getComputedStyle(document.documentElement).getPropertyValue('--edfs')) || 1;
+
+  function loadEdFont() {
+    let v = '1';
+    try { v = localStorage.getItem(EDFS_KEY) || '1'; } catch { /* 기본값으로 간다 */ }
+    applyEdFont(v);
+  }
+
   // ---------- 편집창 너비 ----------
   // 모니터 크기에 따라 다르므로 글자 크기와 마찬가지로 동기화하지 않고 이 브라우저에만 둔다
   const EDW_KEY = 'cal.edw.v1';
   const EDW_MIN = 320;
 
-  // 아무리 넓혀도 달력 쪽에 최소 480px 은 남긴다
-  const edwMax = () =>
-    Math.max(EDW_MIN, Math.min(window.innerWidth - 480, Math.round(window.innerWidth * 0.75)));
+  // 달력을 옆으로 밀어내는 넓은 화면에서는 달력 쪽에 최소 480px 을 남긴다.
+  // 태블릿처럼 편집창이 달력 위에 겹쳐 뜨는 화면에서는 밀 필요가 없으니
+  // 뒤를 눌러 닫을 수 있을 만큼(48px)만 남기고 거의 끝까지 넓힐 수 있다.
+  const PUSH_MQ = '(min-width: 1100px)';
+  const RESIZE_MQ = '(min-width: 621px)';   // 휴대폰(아래에서 올라오는 편집창)만 뺀다
+  const edwMax = () => window.matchMedia(PUSH_MQ).matches
+    ? Math.max(EDW_MIN, Math.min(window.innerWidth - 480, Math.round(window.innerWidth * 0.75)))
+    : Math.max(EDW_MIN, window.innerWidth - 48);
 
   function applyEdWidth(px, save) {
     const w = Math.round(Math.min(Math.max(px, EDW_MIN), edwMax()));
@@ -380,7 +409,7 @@
     $('#editor').hidden = false;
     document.body.classList.add('editing');   // 넓은 화면에서 달력을 옆으로 밀어낸다
     // 밀어낼 자리가 없어 달력 위에 겹쳐 뜨는 화면에서만 뒤를 어둡게 한다
-    if (!window.matchMedia('(min-width: 1100px)').matches) $('#scrim').hidden = false;
+    if (!window.matchMedia(PUSH_MQ).matches) $('#scrim').hidden = false;
     location.hash = s;
     setTimeout(() => $('#edText').focus(), 30);
   }
@@ -422,6 +451,217 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `calendar-backup-${todayISO()}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  // ---------- 엑셀 내보내기 ----------
+  // 외부 라이브러리 없이 .xlsx 를 직접 만든다. xlsx 는 XML 몇 개를 zip 으로 묶은 것이라
+  // 압축 없이(stored) 묶기만 해도 엑셀이 그대로 연다. 기록이 서버로 나가지 않는 원칙도 지킨다.
+
+  const TAG_LABEL = { '': '', important: '중요', holiday: '휴일', done: '완료' };
+
+  // XML 에 넣을 수 없는 제어문자는 빼고, 엑셀 한 칸의 한도(32,767자)를 넘으면 자른다
+  const xmlText = (s) => String(s)
+    .replace(/[^\x09\x0A\x0D\x20-퟿-�\u{10000}-\u{10FFFF}]/gu, '')
+    .slice(0, 32767)
+    .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const colName = (i) => String.fromCharCode(65 + i);          // 열은 많아야 5개다
+  const excelDate = (s) => {                                      // 1900 날짜 체계의 일련번호
+    const [y, m, d] = s.split('-').map(Number);
+    return (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000;
+  };
+
+  /* rows 의 각 칸은 { v, s, date } 다. s 는 styles.xml 의 cellXfs 번호다. */
+  function sheetXml(widths, rows) {
+    const cols = widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
+    const body = rows.map((r, ri) => {
+      const cells = r.map((c, ci) => {
+        const ref = colName(ci) + (ri + 1);
+        if (c.date) return `<c r="${ref}" s="${c.s}"><v>${excelDate(c.v)}</v></c>`;
+        if (c.v === '' || c.v == null) return `<c r="${ref}" s="${c.s}"/>`;
+        return `<c r="${ref}" s="${c.s}" t="inlineStr"><is><t xml:space="preserve">${xmlText(c.v)}</t></is></c>`;
+      }).join('');
+      return `<row r="${ri + 1}">${cells}</row>`;
+    }).join('');
+    const last = colName(widths.length - 1) + Math.max(rows.length, 1);
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      `<cols>${cols}</cols><sheetData>${body}</sheetData>` +
+      `<autoFilter ref="A1:${last}"/></worksheet>`;
+  }
+
+  // 0 기본 · 1 머리글 · 2 날짜 · 3 위쪽 정렬 · 4 줄바꿈 · 5~7 줄바꿈 + 표시 색(중요/휴일/완료)
+  const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>' +
+    '<fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font>' +
+    '<font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts>' +
+    '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE8F0FE"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF6D6"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFDECEC"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFEEF1F4"/></patternFill></fill></fills>' +
+    '<borders count="1"><border/></borders>' +
+    '<cellStyleXfs count="1"><xf/></cellStyleXfs>' +
+    '<cellXfs count="8">' +
+    '<xf/>' +
+    '<xf fontId="1" fillId="2" applyFont="1" applyFill="1"><alignment vertical="center"/></xf>' +
+    '<xf numFmtId="164" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf>' +
+    '<xf applyAlignment="1"><alignment vertical="top"/></xf>' +
+    '<xf applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+    '<xf fillId="3" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+    '<xf fillId="4" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+    '<xf fillId="5" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+    '</cellXfs></styleSheet>';
+
+  const TAG_STYLE = { important: 5, holiday: 6, done: 7 };
+
+  function buildXlsx() {
+    const H = (v) => ({ v, s: 1 });
+
+    const dayRows = [[H('날짜'), H('요일'), H('공휴일'), H('표시'), H('내용')]];
+    Object.keys(store.days)
+      .filter((s) => store.days[s].text || store.days[s].tag)
+      .sort()
+      .forEach((s) => {
+        const e = store.days[s];
+        dayRows.push([
+          { v: s, s: 2, date: true },
+          { v: DOW[parse(s).getDay()], s: 3 },
+          { v: window.holidayName(s) || '', s: 3 },
+          { v: TAG_LABEL[e.tag] || '', s: 3 },
+          { v: e.text, s: TAG_STYLE[e.tag] || 4 },
+        ]);
+      });
+
+    const weekRows = [[H('주 시작일'), H('기간'), H('주간목표')]];
+    Object.keys(store.weeks)
+      .filter((s) => store.weeks[s].text)
+      .sort()
+      .forEach((s) => {
+        const end = addDays(parse(s), 6);
+        weekRows.push([
+          { v: s, s: 2, date: true },
+          { v: `${fmtLong(s).replace(/ \(.\)$/, '')} – ${end.getMonth() + 1}월 ${end.getDate()}일`, s: 3 },
+          { v: store.weeks[s].text, s: 4 },
+        ]);
+      });
+
+    const ns = 'http://schemas.openxmlformats.org';
+    const files = {
+      '[Content_Types].xml':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        `<Types xmlns="${ns}/package/2006/content-types">` +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '</Types>',
+      '_rels/.rels':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        `<Relationships xmlns="${ns}/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="${ns}/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+        '</Relationships>',
+      'xl/workbook.xml':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        `<workbook xmlns="${ns}/spreadsheetml/2006/main" xmlns:r="${ns}/officeDocument/2006/relationships">` +
+        '<sheets><sheet name="일별 기록" sheetId="1" r:id="rId1"/><sheet name="주간목표" sheetId="2" r:id="rId2"/></sheets>' +
+        '<definedNames>' +
+        `<definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'일별 기록'!$A$1:$E$${dayRows.length}</definedName>` +
+        `<definedName name="_xlnm._FilterDatabase" localSheetId="1" hidden="1">'주간목표'!$A$1:$C$${weekRows.length}</definedName>` +
+        '</definedNames></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        `<Relationships xmlns="${ns}/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="${ns}/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+        `<Relationship Id="rId2" Type="${ns}/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>` +
+        `<Relationship Id="rId3" Type="${ns}/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+        '</Relationships>',
+      'xl/styles.xml': STYLES_XML,
+      'xl/worksheets/sheet1.xml': sheetXml([12, 6, 14, 7, 90], dayRows),
+      'xl/worksheets/sheet2.xml': sheetXml([12, 30, 90], weekRows),
+    };
+    return { blob: zipStore(files), days: dayRows.length - 1, weeks: weekRows.length - 1 };
+  }
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  /** 압축하지 않고 묶기만 하는 zip. 파일 이름이 모두 영문이라 UTF-8 플래그는 필요 없다. */
+  function zipStore(files) {
+    const enc = new TextEncoder();
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+    const parts = [], central = [];
+    let offset = 0;
+    for (const [name, text] of Object.entries(files)) {
+      const nameB = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(10, dosTime, true);
+      local.setUint16(12, dosDate, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, nameB.length, true);
+      parts.push(local, nameB, data);
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(12, dosTime, true);
+      cd.setUint16(14, dosDate, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, nameB.length, true);
+      cd.setUint32(42, offset, true);
+      central.push(cd, nameB);
+
+      offset += 30 + nameB.length + data.length;
+    }
+
+    const cdSize = central.reduce((n, p) => n + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, Object.keys(files).length, true);
+    end.setUint16(10, Object.keys(files).length, true);
+    end.setUint32(12, cdSize, true);
+    end.setUint32(16, offset, true);
+
+    return new Blob([...parts, ...central, end],
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  function doExportXlsx() {
+    const { blob, days } = buildXlsx();
+    if (!days && !confirm('아직 기록이 없습니다. 빈 엑셀 파일을 받을까요?')) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `캘린더-기록-${todayISO()}.xlsx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
@@ -672,14 +912,15 @@
     el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
   }
 
-  /* 편집창 왼쪽 가장자리를 끌어 너비를 바꾼다. 왼쪽으로 끌수록 넓어진다. */
+  /* 편집창 왼쪽 가장자리를 끌어 너비를 바꾼다. 왼쪽으로 끌수록 넓어진다.
+     pointer 이벤트라 마우스와 손가락(태블릿) 모두 같은 코드로 동작한다. */
   (function enableEdResize() {
     const handle = $('#edResize');
     let x0 = 0, w0 = 0, dragging = false;
     const edWidth = () => $('#editor').getBoundingClientRect().width;
 
     handle.addEventListener('pointerdown', (e) => {
-      if (!window.matchMedia('(min-width: 1100px)').matches) return;
+      if (!window.matchMedia(RESIZE_MQ).matches) return;
       dragging = true;
       x0 = e.clientX;
       w0 = edWidth();
@@ -802,6 +1043,10 @@
     refreshCell(selected);
   });
 
+  $('#edFsDown').onclick = () => applyEdFont(edFont() - EDFS_STEP);
+  $('#edFsUp').onclick = () => applyEdFont(edFont() + EDFS_STEP);
+  $('#edFsVal').onclick = () => applyEdFont(1);
+
   $('#edTemplate').onclick = () => {
     const ta = $('#edText');
     const base = ta.value.replace(/\s+$/, '');
@@ -870,6 +1115,7 @@
   };
 
   $('#btnExport').onclick = () => { $('.menu').open = false; doExport(); };
+  $('#btnXlsx').onclick = () => { $('.menu').open = false; doExportXlsx(); };
   $('#btnImport').onclick = () => { $('.menu').open = false; $('#fileIn').click(); };
   $('#btnStats').onclick = () => { $('.menu').open = false; showStats(); };
   $('#fileIn').addEventListener('change', (e) => {
@@ -896,6 +1142,13 @@
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); persist(true); return; }
+    // 메모를 쓰는 중에는 Ctrl +/- 가 화면 전체 대신 메모 글자만 키운다
+    if ((e.ctrlKey || e.metaKey) && e.target.id === 'edText' && /^[=+\-_0]$/.test(e.key)) {
+      e.preventDefault();
+      if (e.key === '0') applyEdFont(1);
+      else applyEdFont(edFont() + (e.key === '-' || e.key === '_' ? -EDFS_STEP : EDFS_STEP));
+      return;
+    }
     if (typing) return;
 
     if (e.key === 'ArrowLeft') { step(-1); }
@@ -937,6 +1190,7 @@
   // ---------- boot ----------
   loadFontScale();
   loadEdWidth();
+  loadEdFont();
   load();
   loadSync();
   setSyncState(syncOn() ? 'ok' : 'off', syncOn() ? '대기 중' : '');

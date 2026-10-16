@@ -25,6 +25,7 @@
   --r:         10px;
   --fs:        1;      /* 글자 크기 배율 — ⋯ 메뉴에서 바꾼다 */
   --edw:       430px;  /* 편집창 너비 */
+  --edfs:      1;      /* 편집창 메모 글자 배율 — 편집창의 − / + 로 바꾼다 */
   --font:      Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Malgun Gothic", Roboto, "Helvetica Neue", sans-serif;
 }
@@ -325,13 +326,14 @@ button, input, textarea { font: inherit; color: inherit; }
   body { transition: padding-right .14s ease; }
 }
 
-/* 왼쪽 가장자리를 끌어 편집창 너비를 조절한다 (밀어내기가 동작하는 넓은 화면에서만) */
+/* 왼쪽 가장자리를 끌어 편집창 너비를 조절한다 (PC · 태블릿. 휴대폰은 아래에서 올라오므로 뺀다) */
 .ed-resize { display: none; }
 
-@media (min-width: 1100px) {
+@media (min-width: 621px) {
   .ed-resize {
     display: block; position: absolute; left: 0; top: 0; bottom: 0;
     width: 9px; cursor: col-resize; z-index: 2;
+    touch-action: none;          /* 손가락으로 끌 때 화면이 대신 스크롤되지 않게 한다 */
   }
   .ed-resize::before {           /* 집으면 파랗게 되는 세로선 */
     content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 3px;
@@ -347,6 +349,17 @@ button, input, textarea { font: inherit; color: inherit; }
   .ed-resize:hover::before, .ed-resize:focus-visible::before,
   body.resizing .ed-resize::before { background: var(--accent); }
   .ed-resize:focus-visible { outline: none; }
+}
+
+/* 손가락은 마우스보다 굵고 마우스오버가 없다. 잡는 곳을 넓히고 손잡이를 늘 보여 준다 */
+@media (min-width: 621px) and (pointer: coarse) {
+  .ed-resize { width: 22px; left: -6px; }
+  .ed-resize::before { left: 8px; }
+  .ed-resize::after {
+    left: 8px; width: 6px; height: 56px; opacity: .75;
+    background: var(--ink-3);
+  }
+  body.resizing .ed-resize::after { opacity: 0; }
 }
 
 /* 끄는 동안에는 글자가 선택되거나 폭이 뒤늦게 따라오지 않게 한다 */
@@ -373,10 +386,32 @@ body.resizing, body.resizing * { transition: none !important; }
 .tag.t-holiday.is-on    { background: var(--holiday-bg); color: var(--sun); }
 .tag.t-done.is-on       { background: var(--done); color: var(--ink); }
 
+/* 메모 글자 크기 − 100% + */
+.ed-zoom {
+  display: flex; margin-left: auto;
+  border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden;
+}
+.ed-zoom button {
+  min-width: calc(30px * var(--fs)); height: calc(28px * var(--fs)); padding: 0 6px;
+  border: 0; background: var(--panel); cursor: pointer; line-height: 1;
+  font-size: calc(16px * var(--fs)); font-weight: 700; color: var(--ink-2);
+}
+.ed-zoom button + button { border-left: 1px solid var(--line-2); }
+.ed-zoom button:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); }
+.ed-zoom button:disabled { opacity: .35; cursor: default; }
+#edFsVal {
+  min-width: calc(50px * var(--fs));
+  font-size: calc(12px * var(--fs)); font-variant-numeric: tabular-nums;
+}
+@media (pointer: coarse) {
+  .ed-zoom button { min-width: 40px; height: 34px; }
+}
+
 #edText {
   flex: 1; margin: 0 16px; padding: 12px;
   border: 1px solid var(--line-2); border-radius: var(--r);
-  background: var(--panel-2); resize: none; line-height: 1.7; font-size: calc(14.5px * var(--fs));
+  background: var(--panel-2); resize: none; line-height: 1.7;
+  font-size: calc(17px * var(--fs) * var(--edfs));
 }
 #edText:focus { outline: 2px solid var(--accent-sf); border-color: var(--accent); }
 
