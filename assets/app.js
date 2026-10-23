@@ -1540,9 +1540,11 @@
   const BOX = '☐', CHECKED = '☑';
   const BOX_RE = /^(\s*)([☐☑]) ?/;
 
-  // 색 네모: 줄 앞에 붙이는 표시. 네모를 누를 때마다 다음 색으로 바뀐다
-  const SQUARES = ['🟦', '🟩', '🟨', '🟧', '🟥', '🟪'];
-  const SQ_RE = /^(\s*)(🟦|🟩|🟨|🟧|🟥|🟪) ?/u;
+  // 줄 앞에 붙이는 네모. 누를 때마다 다음 색으로 바뀐다.
+  // 첫 번째 ■ 는 색이 없는 보통 글자라 글자색(밝은 화면에선 검정, 어두운 화면에선 흰색)을 따른다.
+  // 메모에 직접 적어 오던 모양과 같아서 이것을 기본으로 둔다.
+  const SQUARES = ['■', '🟦', '🟩', '🟨', '🟧', '🟥', '🟪'];
+  const SQ_RE = /^(\s*)(■|🟦|🟩|🟨|🟧|🟥|🟪) ?/u;
 
   /* 글자를 바꾸되 되돌리기(Ctrl+Z)가 살아 있도록 가능하면 insertText 를 쓴다.
      insertText 는 input 이벤트를 일으켜 저장까지 이어진다. 안 되는 브라우저에서는 직접 저장한다. */
@@ -1609,10 +1611,12 @@
     }
     m = SQ_RE.exec(head);
     if (!m) return;
-    const at = a + m[1].length, len = m[2].length;    // 네모는 글자 두 칸(서로게이트 쌍)이다
+    // ■ 는 한 칸, 색 네모 이모지는 두 칸(서로게이트 쌍)이라 길이를 따로 센다
+    const at = a + m[1].length, len = m[2].length;
     if (pos !== at && pos !== at + len) return;
     const next = SQUARES[(SQUARES.indexOf(m[2]) + 1) % SQUARES.length];
-    replaceText(ta, at, at + len, next, at + len + 1, at + len + 1);
+    const caret = at + next.length + 1;               // 바뀐 네모와 뒤 빈칸 다음
+    replaceText(ta, at, at + len, next, caret, caret);
   }
 
   // 상자 줄에서 Enter 를 치면 다음 줄에도 상자를 붙인다. 빈 상자 줄에서 치면 상자를 지운다

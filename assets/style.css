@@ -641,6 +641,9 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
   resize: none; line-height: 1.75;
 }
 
+/* 버튼 속 표시는 메모에 실제로 들어갈 모습 그대로 보여 준다 (글자색을 따른다) */
+.mk { color: var(--ink); }
+
 .td-tools { display: flex; align-items: center; gap: 4px; flex: none; margin-top: 6px; }
 .td-tools .grow { flex: 1; }
 
