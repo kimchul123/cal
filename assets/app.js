@@ -13,7 +13,7 @@
   // ---------- state ----------
   // days/weeks 의 각 항목은 { text, tag, t } 형태다. t 는 마지막으로 고친 시각(ms)으로,
   // 두 PC 의 기록을 합칠 때 어느 쪽이 최신인지 판단하는 유일한 근거다.
-  let store = { version: 2, days: {}, weeks: {} };
+  let store = { version: 2, days: {}, weeks: {}, todos: {} };
   let view = 'month';
   let cursor = new Date();          // 화면에 보이는 기준 날짜
   let selected = null;              // 편집 중인 날짜 (ISO)
@@ -47,6 +47,7 @@
       if (o && typeof o === 'object') {
         store.days = normMap(o.days);
         store.weeks = normMap(o.weeks);
+        store.todos = normTodos(o.todos);
       }
     } catch (e) {
       console.warn('저장된 기록을 읽지 못했습니다.', e);
@@ -125,6 +126,81 @@
 
   /* 실제로 내용이 있는 날만 센다 (빈 항목은 지운 흔적일 뿐이다) */
   const filledDays = () => Object.keys(store.days).filter((k) => store.days[k].text);
+
+  // ---------- 해야할일 ----------
+  // 날짜에 매이지 않고 끝날 때까지 남아 있는 일을 카드로 관리한다.
+  // 항목마다 t(마지막 수정 시각)를 두어 날짜 기록과 똑같은 방식으로 기기 간 병합된다.
+  const TCOLORS = ['', 'y', 'g', 'b', 'r', 'p'];
+  let todoFilter = 'open';
+  let todoLayout = 'card';
+  let tdOpenId = null;                       // 편집창에 떠 있는 할일
+
+  const newId = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  function normItems(v) {
+    if (!Array.isArray(v)) return [];
+    return v.slice(0, 300)
+      .filter((it) => it && typeof it === 'object')
+      .map((it) => ({ text: String(it.text || ''), done: !!it.done }));
+  }
+
+  function normTodos(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(o || {})) {
+      if (!/^[A-Za-z0-9_-]{1,40}$/.test(k) || !v || typeof v !== 'object') continue;
+      const t = Number(v.t) || 0;
+      if (v.deleted) { out[k] = { deleted: true, t }; continue; }   // 지웠다는 사실도 전파해야 한다
+      out[k] = {
+        title: String(v.title || ''),
+        body: String(v.body || ''),
+        items: normItems(v.items),
+        color: TCOLORS.includes(v.color) ? v.color : '',
+        pinned: !!v.pinned,
+        done: !!v.done,
+        due: /^\d{4}-\d{2}-\d{2}$/.test(v.due || '') ? v.due : '',
+        created: Number(v.created) || t,
+        t,
+      };
+    }
+    return out;
+  }
+
+  const getTodo = (id) => {
+    const v = store.todos[id];
+    return v && !v.deleted ? v : null;
+  };
+
+  const liveTodos = () =>
+    Object.keys(store.todos).filter((k) => !store.todos[k].deleted).map((k) => [k, store.todos[k]]);
+
+  function saveTodo(id, patch) {
+    const cur = getTodo(id) || {
+      title: '', body: '', items: [], color: '', pinned: false,
+      done: false, due: '', created: Date.now(),
+    };
+    store.todos[id] = Object.assign({}, cur, patch, { t: Date.now() });
+    persist();
+  }
+
+  function removeTodo(id) {
+    store.todos[id] = { deleted: true, t: Date.now() };
+    persist();
+  }
+
+  function addTodo(title) {
+    const id = newId();
+    saveTodo(id, { title: title.trim() });
+    return id;
+  }
+
+  /** 남은 날짜를 사람이 읽는 말로 */
+  function dueInfo(due) {
+    if (!due) return null;
+    const d = Math.round((parse(due) - parse(todayISO())) / 86400000);
+    const label = d === 0 ? '오늘까지' : d === 1 ? '내일까지'
+      : d < 0 ? `${-d}일 지남` : `${d}일 남음`;
+    return { d, label, cls: d < 0 ? 'od' : d <= 1 ? 'soon' : '' };
+  }
 
   // ---------- 글자 크기 ----------
   // 화면 배율은 기기마다 취향이 달라 동기화하지 않고 이 브라우저에만 둔다
@@ -213,15 +289,110 @@
 
   // ---------- render ----------
   function render() {
-    $$('.segbtn').forEach((b) => b.classList.toggle('is-on', b.dataset.view === view));
+    $$('.segbtn[data-view]').forEach((b) => b.classList.toggle('is-on', b.dataset.view === view));
 
     const searching = query.trim().length > 0;
     $('#viewMonth').hidden = searching || view !== 'month';
     $('#viewWeek').hidden = searching || view !== 'week';
+    $('#viewTodo').hidden = searching || view !== 'todo';
     $('#viewSearch').hidden = !searching;
 
+    // 할일 보드는 날짜 개념이 없으므로 이전/다음 화살표를 숨긴다
+    document.body.classList.toggle('todo-view', !searching && view === 'todo');
+    $('#btnTodo').classList.toggle('is-on', !searching && view === 'todo');
+    updateTodoCount();
+
     if (searching) { renderSearch(); return; }
-    if (view === 'month') renderMonth(); else renderWeek();
+    if (view === 'month') renderMonth();
+    else if (view === 'week') renderWeek();
+    else renderTodo();
+  }
+
+  function renderTodo() {
+    $('#periodLabel').textContent = '해야할일';
+
+    const all = liveTodos();
+    const open = all.filter(([, v]) => !v.done);
+    const done = all.filter(([, v]) => v.done);
+
+    $('#cOpen').textContent = open.length;
+    $('#cDone').textContent = done.length;
+    $('#cAll').textContent = all.length;
+    $$('#viewTodo .chip').forEach((c) => c.classList.toggle('is-on', c.dataset.filter === todoFilter));
+    $$('#viewTodo .segbtn').forEach((b) => b.classList.toggle('is-on', b.dataset.layout === todoLayout));
+
+    const list = todoFilter === 'done' ? done : todoFilter === 'all' ? all : open;
+
+    // 고정 → 미완료 → 마감 가까운 순 → 최근에 고친 순
+    list.sort(([, a], [, b]) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const da = a.due || '9999-99-99', db = b.due || '9999-99-99';
+      if (da !== db) return da < db ? -1 : 1;
+      return b.t - a.t;
+    });
+
+    const wrap = $('#todoWrap');
+    wrap.className = 'todo-wrap as-' + todoLayout;
+    wrap.innerHTML = '';
+
+    if (!list.length) {
+      wrap.appendChild(el('div', 'empty', todoFilter === 'done'
+        ? '아직 완료한 일이 없습니다.'
+        : '위 칸에 할 일을 적고 Enter 를 누르세요.'));
+      return;
+    }
+
+    for (const [id, v] of list) wrap.appendChild(todoCard(id, v));
+  }
+
+  function todoCard(id, v) {
+    const card = el('article', `todo${v.color ? ' c-' + v.color : ''}${v.done ? ' is-done' : ''}`);
+    card.dataset.id = id;
+
+    const steps = v.items.length;
+    const doneSteps = v.items.filter((i) => i.done).length;
+    const info = dueInfo(v.due);
+
+    const preview = v.body
+      ? `<p class="t-body">${esc(v.body)}</p>`
+      : (steps ? '' : '<p class="t-body t-empty">내용 없음</p>');
+
+    const stepList = steps
+      ? '<ul class="t-steps">' + v.items.slice(0, 6).map((it, i) =>
+          `<li class="${it.done ? 'on' : ''}"><button class="sbox" data-step="${i}"
+             aria-label="${esc(it.text)} ${it.done ? '완료 취소' : '완료'}"></button>
+             <span>${esc(it.text)}</span></li>`).join('')
+        + (steps > 6 ? `<li class="more">그 외 ${steps - 6}개</li>` : '') + '</ul>'
+      : '';
+
+    card.innerHTML =
+      `<div class="t-head">
+         <button class="t-chk" data-act="done" aria-pressed="${v.done}"
+                 title="${v.done ? '진행중으로 되돌리기' : '완료로 표시'}"></button>
+         <h3 class="t-title">${esc(v.title || '(제목 없음)')}</h3>
+         <button class="t-pin${v.pinned ? ' on' : ''}" data-act="pin"
+                 title="${v.pinned ? '고정 해제' : '위로 고정'}" aria-pressed="${v.pinned}">📌</button>
+       </div>
+       ${preview}
+       ${stepList}
+       <div class="t-foot">
+         ${info ? `<span class="t-due ${info.cls}">${info.label}</span>` : ''}
+         ${steps ? `<span class="t-prog">${doneSteps}/${steps}</span>` : ''}
+         <span class="grow"></span>
+         <span class="t-when">${fmtWhen(v.t)}</span>
+       </div>`;
+    return card;
+  }
+
+  function fmtWhen(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const days = Math.round((parse(todayISO()) - parse(iso(d))) / 86400000);
+    if (days === 0) return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    if (days === 1) return '어제';
+    if (days < 7) return `${days}일 전`;
+    return `${d.getMonth() + 1}.${d.getDate()}`;
   }
 
   function renderMonth() {
@@ -438,6 +609,74 @@
     return on ? on.dataset.tag : '';
   }
 
+  // ---------- 할일 편집창 ----------
+  function openTodo(id) {
+    const v = getTodo(id);
+    if (!v) return;
+    tdOpenId = id;
+
+    $('#tdTitle').value = v.title;
+    $('#tdBody').value = v.body;
+    $('#tdDue').value = v.due;
+    $('#tdPin').setAttribute('aria-pressed', String(v.pinned));
+    $('#tdPin').classList.toggle('on', v.pinned);
+    $('#tdDone').textContent = v.done ? '진행중으로 되돌리기' : '완료로 표시';
+    $$('#tdColors .sw').forEach((b) => b.classList.toggle('is-on', b.dataset.color === v.color));
+    renderTdItems(v.items);
+
+    $('#dlgTodo').showModal();
+    if (!v.title) setTimeout(() => $('#tdTitle').focus(), 30);
+  }
+
+  function renderTdItems(items) {
+    const box = $('#tdItems');
+    box.innerHTML = '';
+    items.forEach((it, i) => {
+      const row = el('div', 'td-item' + (it.done ? ' on' : ''));
+      row.innerHTML =
+        `<button class="sbox" data-i="${i}" aria-label="${it.done ? '완료 취소' : '완료'}"></button>
+         <input type="text" value="${esc(it.text)}" data-i="${i}" placeholder="단계 내용">
+         <button class="xbtn" data-del="${i}" aria-label="이 단계 지우기">✕</button>`;
+      box.appendChild(row);
+    });
+  }
+
+  /** 편집창의 현재 내용을 저장한다 */
+  function flushTodo() {
+    if (!tdOpenId) return;
+    const items = $$('#tdItems .td-item').map((row) => ({
+      text: $('input', row).value,
+      done: row.classList.contains('on'),
+    })).filter((it) => it.text.trim() || it.done);
+
+    saveTodo(tdOpenId, {
+      title: $('#tdTitle').value.trim(),
+      body: $('#tdBody').value.replace(/\s+$/, ''),
+      due: $('#tdDue').value,
+      items,
+    });
+    $('#tdStatus').textContent = '저장됨';
+    clearTimeout(flushTodo._t);
+    flushTodo._t = setTimeout(() => { $('#tdStatus').textContent = '자동 저장됩니다'; }, 1400);
+  }
+
+  function closeTodo() {
+    if (!tdOpenId) return;
+    flushTodo();
+    persist(true);
+    tdOpenId = null;
+    $('#dlgTodo').close();
+    if (view === 'todo') renderTodo();
+    updateTodoCount();
+  }
+
+  function updateTodoCount() {
+    const n = liveTodos().filter(([, v]) => !v.done).length;
+    const badge = $('#todoCount');
+    badge.textContent = n;
+    badge.hidden = n === 0;
+  }
+
   // ---------- import / export ----------
   function doExport() {
     const payload = {
@@ -446,6 +685,7 @@
       exportedAt: new Date().toISOString(),
       days: store.days,
       weeks: store.weeks,
+      todos: store.todos,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -683,8 +923,10 @@
       const now = Date.now();
       Object.assign(store.days, normMap(days));
       Object.assign(store.weeks, normMap(o.weeks));
+      Object.assign(store.todos, normTodos(o.todos));
       for (const k of Object.keys(normMap(days))) store.days[k].t = now;
       for (const k of Object.keys(normMap(o.weeks))) store.weeks[k].t = now;
+      for (const k of Object.keys(normTodos(o.todos))) store.todos[k].t = now;
 
       persist(true);
       render();
@@ -796,8 +1038,13 @@
     return changed;
   }
 
+  // 쓸 때마다 t 가 올라가므로 t 만 모아도 "같은 내용인가" 를 가릴 수 있다.
+  // 날짜 기록과 할일이 형태가 달라도 이 함수 하나로 비교된다.
   const fingerprint = (m) =>
-    Object.keys(m).sort().map((k) => `${k}:${m[k].t}:${m[k].text.length}:${m[k].tag}`).join('|');
+    Object.keys(m).sort().map((k) => `${k}:${m[k].t}`).join('|');
+
+  const stamp = () =>
+    fingerprint(store.days) + '#' + fingerprint(store.weeks) + '#' + fingerprint(store.todos);
 
   async function syncNow(manual) {
     if (!syncOn()) { if (manual) openSyncDialog(); return; }
@@ -807,22 +1054,26 @@
 
     try {
       const file = await gh('GET');
-      let remote = { days: {}, weeks: {} };
+      let remote = { days: {}, weeks: {}, todos: {} };
       if (file) {
         const raw = await fileContent(file);
         let o;
         try { o = JSON.parse(raw); }
         catch { throw new Error(`${sync.path} 을 읽지 못했습니다 (JSON 형식 오류)`); }
-        remote = { days: normMap(o.days), weeks: normMap(o.weeks) };
+        remote = { days: normMap(o.days), weeks: normMap(o.weeks), todos: normTodos(o.todos) };
       }
 
-      const before = fingerprint(store.days) + '#' + fingerprint(store.weeks);
-      const pulled = mergeInto(store.days, remote.days) | mergeInto(store.weeks, remote.weeks);
-      const after = fingerprint(store.days) + '#' + fingerprint(store.weeks);
+      const before = stamp();
+      const pulled = mergeInto(store.days, remote.days)
+        | mergeInto(store.weeks, remote.weeks)
+        | mergeInto(store.todos, remote.todos);
+      const after = stamp();
 
-      if (pulled) { persist(true); if (!selected) render(); }
+      // 할일 편집창이 열려 있으면 입력 중인 칸을 건드리지 않는다
+      if (pulled) { persist(true); if (!selected && !tdOpenId) render(); }
 
-      const remoteFp = fingerprint(remote.days) + '#' + fingerprint(remote.weeks);
+      const remoteFp = fingerprint(remote.days) + '#' + fingerprint(remote.weeks)
+        + '#' + fingerprint(remote.todos);
       if (after !== remoteFp) {
         const payload = {
           version: 2,
@@ -830,6 +1081,7 @@
           updatedAt: new Date().toISOString(),
           days: store.days,
           weeks: store.weeks,
+          todos: store.todos,
         };
         await gh('PUT', {
           message: `기록 갱신 ${new Date().toLocaleString('ko-KR')}`,
@@ -891,7 +1143,140 @@
   }
 
   // ---------- events ----------
+  // ---------- 할일 이벤트 ----------
+  $('#btnTodo').onclick = () => {
+    if (query) { query = ''; $('#q').value = ''; }
+    view = view === 'todo' ? 'month' : 'todo';
+    render();
+  };
+
+  function createFromInput() {
+    const input = $('#todoNew');
+    const title = input.value.trim();
+    if (!title) return;
+    input.value = '';
+    const id = addTodo(title);
+    persist(true);
+    renderTodo();
+    updateTodoCount();
+    openTodo(id);                      // 바로 내용을 채울 수 있게 편집창을 연다
+  }
+
+  $('#todoAdd').onclick = createFromInput;
+  $('#todoNew').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); createFromInput(); }
+  });
+
+  $('#viewTodo').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) { todoFilter = chip.dataset.filter; renderTodo(); return; }
+
+    const seg = e.target.closest('#viewTodo .segbtn');
+    if (seg) { todoLayout = seg.dataset.layout; renderTodo(); return; }
+
+    const card = e.target.closest('.todo');
+    if (!card) return;
+    const id = card.dataset.id;
+    const v = getTodo(id);
+    if (!v) return;
+
+    const step = e.target.closest('.sbox');
+    if (step) {                                   // 카드에서 바로 단계를 체크한다
+      const i = Number(step.dataset.step);
+      const items = v.items.map((it, k) => (k === i ? { ...it, done: !it.done } : it));
+      saveTodo(id, { items });
+      persist(true);
+      renderTodo();
+      return;
+    }
+
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      if (act.dataset.act === 'done') saveTodo(id, { done: !v.done, pinned: v.done ? v.pinned : false });
+      else saveTodo(id, { pinned: !v.pinned });
+      persist(true);
+      renderTodo();
+      updateTodoCount();
+      return;
+    }
+
+    openTodo(id);
+  });
+
+  // --- 편집창 ---
+  $('#tdClose').onclick = closeTodo;
+  $('#dlgTodo').addEventListener('close', () => { if (tdOpenId) closeTodo(); });
+  $('#dlgTodo').addEventListener('cancel', (e) => { e.preventDefault(); closeTodo(); });
+
+  ['#tdTitle', '#tdBody', '#tdDue'].forEach((sel) =>
+    $(sel).addEventListener('input', flushTodo));
+
+  $('#tdItems').addEventListener('input', flushTodo);
+
+  $('#tdItems').addEventListener('click', (e) => {
+    const box = e.target.closest('.sbox');
+    if (box) { box.closest('.td-item').classList.toggle('on'); flushTodo(); return; }
+
+    const del = e.target.closest('[data-del]');
+    if (del) { del.closest('.td-item').remove(); flushTodo(); }
+  });
+
+  // 단계 칸에서 Enter 를 누르면 다음 단계를 바로 잇는다
+  $('#tdItems').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    addItemRow();
+  });
+
+  function addItemRow() {
+    const box = $('#tdItems');
+    const row = el('div', 'td-item');
+    row.innerHTML =
+      `<button class="sbox" aria-label="완료"></button>
+       <input type="text" placeholder="단계 내용">
+       <button class="xbtn" data-del="x" aria-label="이 단계 지우기">✕</button>`;
+    box.appendChild(row);
+    $('input', row).focus();
+  }
+  $('#tdAddItem').onclick = addItemRow;
+
+  $('#tdPin').onclick = () => {
+    if (!tdOpenId) return;
+    const v = getTodo(tdOpenId);
+    saveTodo(tdOpenId, { pinned: !v.pinned });
+    $('#tdPin').classList.toggle('on', !v.pinned);
+    $('#tdPin').setAttribute('aria-pressed', String(!v.pinned));
+  };
+
+  $('#tdColors').addEventListener('click', (e) => {
+    const sw = e.target.closest('.sw');
+    if (!sw || !tdOpenId) return;
+    saveTodo(tdOpenId, { color: sw.dataset.color });
+    $$('#tdColors .sw').forEach((b) => b.classList.toggle('is-on', b === sw));
+  });
+
+  $('#tdDone').onclick = () => {
+    if (!tdOpenId) return;
+    flushTodo();
+    const v = getTodo(tdOpenId);
+    saveTodo(tdOpenId, { done: !v.done, pinned: v.done ? v.pinned : false });
+    closeTodo();
+  };
+
+  $('#tdDelete').onclick = () => {
+    if (!tdOpenId) return;
+    const v = getTodo(tdOpenId);
+    if (!confirm(`"${v.title || '제목 없음'}" 을 지웁니다. 되돌릴 수 없습니다.\n계속할까요?`)) return;
+    removeTodo(tdOpenId);
+    persist(true);
+    tdOpenId = null;
+    $('#dlgTodo').close();
+    renderTodo();
+    updateTodoCount();
+  };
+
   function step(dir, axis) {
+    if (view === 'todo') return;          // 할일 보드는 날짜를 넘길 대상이 아니다
     if (view === 'month') {
       // 31일에서 setMonth 를 쓰면 다음 달을 건너뛰므로 항상 1일 기준으로 옮긴다
       cursor = new Date(cursor.getFullYear(), cursor.getMonth() + dir, 1);
@@ -973,6 +1358,7 @@
     area.addEventListener('touchstart', (e) => {
       on = false;
       if (e.touches.length !== 1) return;                       // 두 손가락은 확대/축소다
+      if (view === 'todo') return;                              // 할일 보드에서는 넘기지 않는다
       if (!$('#editor').hidden || query.trim()) return;          // 편집 중 · 검색 중에는 넘기지 않는다
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       const t = e.touches[0];
@@ -1202,7 +1588,7 @@
     $('.menu').open = false;
     if (!confirm('모든 기록을 지웁니다. 되돌릴 수 없습니다.\n먼저 JSON 내보내기로 백업하셨나요?')) return;
     if (!confirm('정말 전부 지울까요?')) return;
-    store = { version: 1, days: {}, weeks: {} };
+    store = { version: 2, days: {}, weeks: {}, todos: {} };
     persist(true);
     closeEditor();
     render();
