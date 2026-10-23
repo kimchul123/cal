@@ -134,6 +134,7 @@
   let todoFilter = 'open';
   let todoLayout = 'card';
   let tdOpenId = null;                       // 편집창에 떠 있는 할일
+  let tdDirty = false;                       // 창을 연 뒤 사람이 직접 고쳤는가
 
   const newId = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -173,13 +174,29 @@
   const liveTodos = () =>
     Object.keys(store.todos).filter((k) => !store.todos[k].deleted).map((k) => [k, store.todos[k]]);
 
+  /** 두 할일이 사람이 보기에 같은 내용인가 (t 는 뺀다) */
+  function sameTodo(a, b) {
+    if (a.title !== b.title || a.body !== b.body || a.color !== b.color) return false;
+    if (a.pinned !== b.pinned || a.done !== b.done) return false;
+    if (a.items.length !== b.items.length) return false;
+    return a.items.every((it, i) => it.text === b.items[i].text && it.done === b.items[i].done);
+  }
+
+  /* 바뀐 게 없으면 쓰지 않는다. 그냥 열어보기만 해도 수정시각이 올라가면
+     다른 기기에서 먼저 적어 둔 내용이 밀려나기 때문이다. */
   function saveTodo(id, patch) {
-    const cur = getTodo(id) || {
+    const cur = getTodo(id);
+    const base = cur || {
       title: '', body: '', items: [], color: '', pinned: false,
       done: false, due: '', created: Date.now(),
     };
-    store.todos[id] = Object.assign({}, cur, patch, { t: Date.now() });
+    const next = Object.assign({}, base, patch);
+    if (cur && sameTodo(cur, next)) return false;
+
+    next.t = Date.now();
+    store.todos[id] = next;
     persist();
+    return true;
   }
 
   function removeTodo(id) {
@@ -597,11 +614,7 @@
   }
 
   // ---------- 할일 편집창 ----------
-  function openTodo(id) {
-    const v = getTodo(id);
-    if (!v) return;
-    tdOpenId = id;
-
+  function fillTodoDialog(v) {
     $('#tdTitle').value = v.title;
     $('#tdBody').value = v.body;
     $('#tdPin').setAttribute('aria-pressed', String(v.pinned));
@@ -609,9 +622,26 @@
     $('#tdDone').textContent = v.done ? '진행중으로 되돌리기' : '완료로 표시';
     $$('#tdColors .sw').forEach((b) => b.classList.toggle('is-on', b.dataset.color === v.color));
     renderTdItems(v.items);
+  }
+
+  function openTodo(id) {
+    const v = getTodo(id);
+    if (!v) return;
+    tdOpenId = id;
+    tdDirty = false;
+    fillTodoDialog(v);
 
     $('#dlgTodo').showModal();
     if (!v.title) setTimeout(() => $('#tdTitle').focus(), 30);
+  }
+
+  /* 다른 기기에서 받아온 내용이 더 최신이면 열려 있는 창에도 반영한다.
+     단, 지금 타이핑 중이라면 건드리지 않는다. */
+  function refreshOpenTodo() {
+    if (!tdOpenId || tdDirty) return;
+    const v = getTodo(tdOpenId);
+    if (v) fillTodoDialog(v);
+    else { tdOpenId = null; $('#dlgTodo').close(); }   // 다른 기기에서 지운 경우
   }
 
   function renderTdItems(items) {
@@ -627,29 +657,33 @@
     });
   }
 
-  /** 편집창의 현재 내용을 저장한다 */
+  /** 편집창의 현재 내용을 저장한다 (사람이 고쳤을 때만 호출된다) */
   function flushTodo() {
-    if (!tdOpenId) return;
+    if (!tdOpenId) return false;
     const items = $$('#tdItems .td-item').map((row) => ({
       text: $('input', row).value,
       done: row.classList.contains('on'),
     })).filter((it) => it.text.trim() || it.done);
 
-    saveTodo(tdOpenId, {
+    const wrote = saveTodo(tdOpenId, {
       title: $('#tdTitle').value.trim(),
       body: $('#tdBody').value.replace(/\s+$/, ''),
       items,
     });
+    if (!wrote) return false;              // 바뀐 게 없으면 저장했다고 하지 않는다
+
+    tdDirty = true;
     $('#tdStatus').textContent = '저장됨';
     clearTimeout(flushTodo._t);
     flushTodo._t = setTimeout(() => { $('#tdStatus').textContent = '자동 저장됩니다'; }, 1400);
+    return true;
   }
 
   function closeTodo() {
     if (!tdOpenId) return;
-    flushTodo();
-    persist(true);
+    if (flushTodo()) persist(true);        // 고친 게 있을 때만 저장·동기화한다
     tdOpenId = null;
+    tdDirty = false;
     $('#dlgTodo').close();
     if (view === 'todo') renderTodo();
     updateTodoCount();
@@ -1054,8 +1088,11 @@
         | mergeInto(store.todos, remote.todos);
       const after = stamp();
 
-      // 할일 편집창이 열려 있으면 입력 중인 칸을 건드리지 않는다
-      if (pulled) { persist(true); if (!selected && !tdOpenId) render(); }
+      if (pulled) {
+        persist(true);
+        refreshOpenTodo();                       // 받아온 내용이 열린 창에도 보이게 한다
+        if (!selected && !tdOpenId) render();
+      }
 
       const remoteFp = fingerprint(remote.days) + '#' + fingerprint(remote.weeks)
         + '#' + fingerprint(remote.todos);
@@ -1631,8 +1668,10 @@
   // 다른 탭에서 기록이 바뀌면 이 탭도 따라간다 (편집 중이면 건드리지 않는다)
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY || dirty || selected) return;
+    if (tdOpenId && tdDirty) return;          // 다른 탭 내용으로 지금 쓰는 글을 밀어내지 않는다
     load();
-    render();
+    refreshOpenTodo();
+    if (!tdOpenId) render();
   });
 
   // 주소의 #2026-09-25 형태로 특정 날짜를 바로 연다 (뒤로가기·링크 공유용)
