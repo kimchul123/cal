@@ -7,7 +7,7 @@
 <meta name="description" content="날짜별로 자유롭게 기록하는 개인 캘린더">
 <meta name="theme-color" content="#1f6feb">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=11">
+<link rel="stylesheet" href="assets/style.css?v=12">
 </head>
 <body>
 
@@ -188,13 +188,18 @@
     <button class="icon" id="tdClose" title="닫기" aria-label="닫기">✕</button>
   </div>
 
-  <textarea id="tdBody" placeholder="진행 상황, 메모, 다음에 할 것…" aria-label="내용"></textarea>
+  <textarea id="tdBody" aria-label="내용"
+    placeholder="진행 상황을 계속 덧붙여 적으세요.&#10;&#10;통화 내용, 받은 자료, 다음에 할 것 …"></textarea>
+
+  <div class="td-tools">
+    <button class="addrow" id="tdStamp" title="커서 자리에 오늘 날짜와 시각을 넣습니다">🕘 지금 시각</button>
+    <button class="addrow" id="tdAddItem">＋ 단계 추가</button>
+  </div>
 
   <div class="td-items" id="tdItems"></div>
-  <button class="addrow" id="tdAddItem">＋ 단계 추가</button>
 
-  <div class="td-meta">
-    <label class="f2"><span>마감일</span><input id="tdDue" type="date"></label>
+  <div class="dlg-foot">
+    <button class="ghost danger" id="tdDelete">삭제</button>
     <div class="colors" id="tdColors" role="group" aria-label="색">
       <button data-color=""  class="sw sw-0" title="기본"></button>
       <button data-color="y" class="sw sw-y" title="노랑"></button>
@@ -203,17 +208,13 @@
       <button data-color="r" class="sw sw-r" title="빨강"></button>
       <button data-color="p" class="sw sw-p" title="보라"></button>
     </div>
-  </div>
-
-  <div class="dlg-foot">
-    <button class="ghost danger" id="tdDelete">삭제</button>
     <span class="grow"></span>
     <span class="hint" id="tdStatus">자동 저장됩니다</span>
     <button class="ghost" id="tdDone">완료로 표시</button>
   </div>
 </dialog>
 
-<script src="assets/holidays.js?v=11"></script>
-<script src="assets/app.js?v=11"></script>
+<script src="assets/holidays.js?v=12"></script>
+<script src="assets/app.js?v=12"></script>
 </body>
 </html>

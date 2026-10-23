@@ -193,15 +193,6 @@
     return id;
   }
 
-  /** 남은 날짜를 사람이 읽는 말로 */
-  function dueInfo(due) {
-    if (!due) return null;
-    const d = Math.round((parse(due) - parse(todayISO())) / 86400000);
-    const label = d === 0 ? '오늘까지' : d === 1 ? '내일까지'
-      : d < 0 ? `${-d}일 지남` : `${d}일 남음`;
-    return { d, label, cls: d < 0 ? 'od' : d <= 1 ? 'soon' : '' };
-  }
-
   // ---------- 글자 크기 ----------
   // 화면 배율은 기기마다 취향이 달라 동기화하지 않고 이 브라우저에만 둔다
   const FS_KEY = 'cal.fs.v1';
@@ -323,12 +314,10 @@
 
     const list = todoFilter === 'done' ? done : todoFilter === 'all' ? all : open;
 
-    // 고정 → 미완료 → 마감 가까운 순 → 최근에 고친 순
+    // 고정 → 미완료 → 최근에 고친 순
     list.sort(([, a], [, b]) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       if (a.done !== b.done) return a.done ? 1 : -1;
-      const da = a.due || '9999-99-99', db = b.due || '9999-99-99';
-      if (da !== db) return da < db ? -1 : 1;
       return b.t - a.t;
     });
 
@@ -352,7 +341,6 @@
 
     const steps = v.items.length;
     const doneSteps = v.items.filter((i) => i.done).length;
-    const info = dueInfo(v.due);
 
     const preview = v.body
       ? `<p class="t-body">${esc(v.body)}</p>`
@@ -377,7 +365,6 @@
        ${preview}
        ${stepList}
        <div class="t-foot">
-         ${info ? `<span class="t-due ${info.cls}">${info.label}</span>` : ''}
          ${steps ? `<span class="t-prog">${doneSteps}/${steps}</span>` : ''}
          <span class="grow"></span>
          <span class="t-when">${fmtWhen(v.t)}</span>
@@ -617,7 +604,6 @@
 
     $('#tdTitle').value = v.title;
     $('#tdBody').value = v.body;
-    $('#tdDue').value = v.due;
     $('#tdPin').setAttribute('aria-pressed', String(v.pinned));
     $('#tdPin').classList.toggle('on', v.pinned);
     $('#tdDone').textContent = v.done ? '진행중으로 되돌리기' : '완료로 표시';
@@ -652,7 +638,6 @@
     saveTodo(tdOpenId, {
       title: $('#tdTitle').value.trim(),
       body: $('#tdBody').value.replace(/\s+$/, ''),
-      due: $('#tdDue').value,
       items,
     });
     $('#tdStatus').textContent = '저장됨';
@@ -1208,8 +1193,24 @@
   $('#dlgTodo').addEventListener('close', () => { if (tdOpenId) closeTodo(); });
   $('#dlgTodo').addEventListener('cancel', (e) => { e.preventDefault(); closeTodo(); });
 
-  ['#tdTitle', '#tdBody', '#tdDue'].forEach((sel) =>
+  ['#tdTitle', '#tdBody'].forEach((sel) =>
     $(sel).addEventListener('input', flushTodo));
+
+  /* 통화·방문 기록을 적을 때 날짜를 매번 치지 않도록 커서 자리에 넣어 준다 */
+  $('#tdStamp').onclick = () => {
+    const ta = $('#tdBody');
+    const n = new Date();
+    const text = `[${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())} `
+      + `${pad(n.getHours())}:${pad(n.getMinutes())}] `;
+    const a = ta.selectionStart, b = ta.selectionEnd;
+    const head = ta.value.slice(0, a);
+    const nl = head && !head.endsWith('\n') ? '\n' : '';     // 줄 중간이면 새 줄에서 시작한다
+    ta.value = head + nl + text + ta.value.slice(b);
+    const pos = a + nl.length + text.length;
+    ta.setSelectionRange(pos, pos);
+    ta.focus();
+    flushTodo();
+  };
 
   $('#tdItems').addEventListener('input', flushTodo);
 

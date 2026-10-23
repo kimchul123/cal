@@ -468,7 +468,8 @@ dialog::backdrop { background: rgba(16,24,40,.4); }
 .msg.good { background: var(--goal); color: var(--goal-l); }
 .msg.bad  { background: var(--holiday-bg); color: var(--sun); }
 
-.dlg-foot { display: flex; align-items: center; gap: 8px; }
+.dlg-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#dlgTodo .dlg-foot { flex: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .dlg-foot .grow { flex: 1; }
 .dlg-foot form { display: contents; }
 .primary {
@@ -603,18 +604,19 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
   font-size: calc(11.5px * var(--fs)); color: var(--ink-3);
 }
 .t-foot .grow { flex: 1; }
-.t-due {
-  padding: 2px 8px; border-radius: 999px; font-weight: 700;
-  background: var(--accent-sf); color: var(--accent);
-}
-.t-due.soon { background: var(--important); color: var(--important-l); }
-.t-due.od { background: var(--holiday-bg); color: var(--sun); }
 .t-prog { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 /* --- 할일 편집창 --- */
-#dlgTodo { max-width: 560px; width: calc(100vw - 32px); max-height: 88vh; overflow-y: auto; }
+/* 내용을 길게 적는 곳이라 창을 크게 잡고, 본문이 남는 높이를 모두 차지하게 한다 */
+#dlgTodo {
+  width: min(1040px, 94vw); max-width: none;
+  height: min(880px, 90vh);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#dlgTodo[open] { display: flex; }
+
 .todo-wrap .empty { column-span: all; }       /* 비었을 때 안내문이 한 단에 갇히지 않게 */
-.td-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.td-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: none; }
 #tdTitle {
   flex: 1; height: 38px; padding: 0 11px; font-weight: 700;
   font-size: calc(15px * var(--fs));
@@ -625,12 +627,14 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
 #tdPin.on { opacity: 1; filter: none; }
 
 #tdBody {
-  width: 100%; min-height: 130px; max-height: 38vh; padding: 11px;
+  flex: 1; width: 100%; min-height: 180px; padding: 13px;
   border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2);
-  resize: vertical; line-height: 1.65;
+  resize: none; line-height: 1.75;
 }
 
-.td-items { margin-top: 12px; max-height: 26vh; overflow-y: auto; }
+.td-tools { display: flex; gap: 4px; flex: none; margin-top: 6px; }
+
+.td-items { margin-top: 4px; max-height: 24vh; overflow-y: auto; flex: none; }
 .td-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .td-item input {
   flex: 1; height: 30px; padding: 0 9px;
@@ -649,16 +653,6 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
 }
 .addrow:hover { background: var(--panel-2); }
 
-.td-meta {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  flex-wrap: wrap; margin: 14px 0 4px; padding-top: 12px; border-top: 1px solid var(--line);
-}
-.f2 { display: flex; align-items: center; gap: 8px; }
-.f2 span { color: var(--ink-2); font-weight: 600; }
-.f2 input {
-  height: 32px; padding: 0 9px;
-  border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2);
-}
 .colors { display: flex; gap: 6px; }
 .sw {
   width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
