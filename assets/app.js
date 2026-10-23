@@ -15,6 +15,7 @@
   // 두 PC 의 기록을 합칠 때 어느 쪽이 최신인지 판단하는 유일한 근거다.
   let store = { version: 2, days: {}, weeks: {}, todos: {} };
   let view = 'month';
+  let lastCalView = 'month';        // 할일 보드에서 돌아갈 달력 보기 (월간/주간)
   let cursor = new Date();          // 화면에 보이는 기준 날짜
   let selected = null;              // 편집 중인 날짜 (ISO)
   let query = '';
@@ -1164,9 +1165,20 @@
 
   // ---------- events ----------
   // ---------- 할일 이벤트 ----------
-  $('#btnTodo').onclick = () => {
+  /** 달력(월간 또는 주간)으로 돌아간다. 마지막에 보던 쪽으로 간다. */
+  function goCalendar() {
     if (query) { query = ''; $('#q').value = ''; }
-    view = view === 'todo' ? 'month' : 'todo';
+    view = lastCalView;
+    render();
+  }
+
+  $('#btnHome').onclick = goCalendar;
+
+  $('#btnTodo').onclick = () => {
+    if (view === 'todo') { goCalendar(); return; }
+    if (query) { query = ''; $('#q').value = ''; }
+    lastCalView = view;
+    view = 'todo';
     render();
   };
 
@@ -1487,8 +1499,8 @@
       return;
     }
 
-    const seg = e.target.closest('.segbtn');
-    if (seg) { view = seg.dataset.view; render(); return; }
+    const seg = e.target.closest('.segbtn[data-view]');
+    if (seg) { view = lastCalView = seg.dataset.view; render(); return; }
 
     const fs = e.target.closest('.fsbtns button');
     if (fs) { applyFontScale(fs.dataset.fs); return; }

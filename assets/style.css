@@ -81,9 +81,17 @@ button, input, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 
-.brand { display: flex; align-items: center; gap: 8px; }
+.brand { margin: 0; display: flex; align-items: center; }
 .logo { font-size: 18px; }
-.brand h1 { margin: 0; font-size: calc(15px * var(--fs)); font-weight: 700; letter-spacing: -.2px; white-space: nowrap; }
+.home {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 7px; border: 0; border-radius: 8px;
+  background: transparent; color: inherit; cursor: pointer;
+  font-size: calc(15px * var(--fs)); font-weight: 700; letter-spacing: -.2px;
+  white-space: nowrap;
+}
+.home:hover { background: var(--panel-2); }
+.home:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .nav { display: flex; align-items: center; gap: 4px; }
 .period { margin: 0 0 0 8px; font-size: calc(17px * var(--fs)); font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
@@ -611,9 +619,10 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
 #dlgTodo {
   width: min(1040px, 94vw); max-width: none;
   height: min(880px, 90vh);
-  display: flex; flex-direction: column; overflow: hidden;
+  overflow: hidden;
 }
-#dlgTodo[open] { display: flex; }
+/* display 는 열렸을 때만 준다. 그냥 주면 닫힌 창이 본문에 그대로 보인다 */
+#dlgTodo[open] { display: flex; flex-direction: column; }
 
 .todo-wrap .empty { column-span: all; }       /* 비었을 때 안내문이 한 단에 갇히지 않게 */
 .td-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: none; }
@@ -669,7 +678,7 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
 
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
-  .brand h1 { display: none; }
+  .home .name { display: none; }    /* 좁은 화면에서는 달력 아이콘만 남긴다 */
   .search input { width: 130px; }
   .grid { grid-auto-rows: calc(112px * var(--fs)); }
   .cell .body { font-size: calc(12px * var(--fs)); }
