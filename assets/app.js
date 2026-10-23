@@ -1340,7 +1340,6 @@
     box.appendChild(row);
     $('input', row).focus();
   }
-  $('#tdAddItem').onclick = addItemRow;
 
   $('#tdPin').onclick = () => {
     if (!tdOpenId) return;
@@ -1541,6 +1540,10 @@
   const BOX = '☐', CHECKED = '☑';
   const BOX_RE = /^(\s*)([☐☑]) ?/;
 
+  // 색 네모: 줄 앞에 붙이는 표시. 네모를 누를 때마다 다음 색으로 바뀐다
+  const SQUARES = ['🟦', '🟩', '🟨', '🟧', '🟥', '🟪'];
+  const SQ_RE = /^(\s*)(🟦|🟩|🟨|🟧|🟥|🟪) ?/u;
+
   /* 글자를 바꾸되 되돌리기(Ctrl+Z)가 살아 있도록 가능하면 insertText 를 쓴다.
      insertText 는 input 이벤트를 일으켜 저장까지 이어진다. 안 되는 브라우저에서는 직접 저장한다. */
   function replaceText(ta, a, b, text, selA, selB) {
@@ -1550,14 +1553,14 @@
     try { ok = document.execCommand('insertText', false, text); } catch { /* 아래에서 대신 넣는다 */ }
     if (!ok || ta.value.slice(a, a + text.length) !== text) {
       ta.setRangeText(text, a, b, 'end');
-      if (selected) { setDay(selected, ta.value, currentTag()); refreshCell(selected); }
+      if (ta.id === 'tdBody') flushTodo();
+      else if (selected) { setDay(selected, ta.value, currentTag()); refreshCell(selected); }
     }
     ta.setSelectionRange(selA, selB);
   }
 
-  /** 커서가 있는 줄(여러 줄을 골랐으면 그 줄들)에 상자를 붙이거나, 이미 다 붙어 있으면 뗀다 */
-  function toggleBoxes() {
-    const ta = $('#edText');
+  /** 커서가 있는 줄(여러 줄을 골랐으면 그 줄들)에 표시를 붙이거나, 이미 다 붙어 있으면 뗀다 */
+  function toggleMarks(ta, re, mark) {
     const v = ta.value;
     const s0 = ta.selectionStart, s1 = ta.selectionEnd;
     const a = v.lastIndexOf('\n', s0 - 1) + 1;
@@ -1566,11 +1569,11 @@
 
     const lines = v.slice(a, b).split('\n');
     const filled = lines.filter((l) => l.trim());
-    const remove = filled.length > 0 && filled.every((l) => BOX_RE.test(l));
+    const remove = filled.length > 0 && filled.every((l) => re.test(l));
     const out = lines.map((l) => {
-      if (remove) return l.replace(BOX_RE, '$1');
-      if (BOX_RE.test(l) || (lines.length > 1 && !l.trim())) return l;   // 여러 줄일 때 빈 줄은 건너뛴다
-      return l.replace(/^(\s*)/, `$1${BOX} `);
+      if (remove) return l.replace(re, '$1');
+      if (re.test(l) || (lines.length > 1 && !l.trim())) return l;   // 여러 줄일 때 빈 줄은 건너뛴다
+      return l.replace(/^(\s*)/, `$1${mark} `);
     }).join('\n');
 
     if (lines.length === 1) {
@@ -1581,26 +1584,41 @@
     }
   }
 
-  $('#edCheck').onclick = toggleBoxes;
+  const toggleBoxes = (ta) => toggleMarks(ta, BOX_RE, BOX);
+  const toggleSquares = (ta) => toggleMarks(ta, SQ_RE, SQUARES[0]);
 
-  // 상자 위를 누르면 체크/해제한다. 상자 바로 앞이나 뒤에 커서가 놓인 경우만 상자를 누른 것으로 본다
-  $('#edText').addEventListener('click', () => {
-    const ta = $('#edText');
+  $('#edCheck').onclick = () => toggleBoxes($('#edText'));
+  $('#edSquare').onclick = () => toggleSquares($('#edText'));
+  $('#tdCheck').onclick = () => toggleBoxes($('#tdBody'));
+  $('#tdSquare').onclick = () => toggleSquares($('#tdBody'));
+
+  /* 상자를 누르면 체크/해제, 색 네모를 누르면 다음 색으로 바꾼다.
+     표시 바로 앞이나 뒤에 커서가 놓인 경우만 표시를 누른 것으로 본다 */
+  function onMarkClick(e) {
+    const ta = e.currentTarget;
     if (ta.selectionStart !== ta.selectionEnd) return;
     const v = ta.value, pos = ta.selectionStart;
     const a = v.lastIndexOf('\n', pos - 1) + 1;
-    const m = BOX_RE.exec(v.slice(a, a + 8));
+    const head = v.slice(a, a + 12);
+    let m = BOX_RE.exec(head);
+    if (m) {
+      const at = a + m[1].length;                     // 상자 글자의 위치
+      if (pos !== at && pos !== at + 1) return;
+      replaceText(ta, at, at + 1, m[2] === BOX ? CHECKED : BOX, at + 2, at + 2);
+      return;
+    }
+    m = SQ_RE.exec(head);
     if (!m) return;
-    const at = a + m[1].length;                       // 상자 글자의 위치
-    if (pos !== at && pos !== at + 1) return;
-    const next = m[2] === BOX ? CHECKED : BOX;
-    replaceText(ta, at, at + 1, next, at + 2, at + 2);
-  });
+    const at = a + m[1].length, len = m[2].length;    // 네모는 글자 두 칸(서로게이트 쌍)이다
+    if (pos !== at && pos !== at + len) return;
+    const next = SQUARES[(SQUARES.indexOf(m[2]) + 1) % SQUARES.length];
+    replaceText(ta, at, at + len, next, at + len + 1, at + len + 1);
+  }
 
   // 상자 줄에서 Enter 를 치면 다음 줄에도 상자를 붙인다. 빈 상자 줄에서 치면 상자를 지운다
-  $('#edText').addEventListener('keydown', (e) => {
+  function onBoxEnter(e) {
     if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
-    const ta = $('#edText');
+    const ta = e.currentTarget;
     if (ta.selectionStart !== ta.selectionEnd) return;
     const v = ta.value, pos = ta.selectionStart;
     const a = v.lastIndexOf('\n', pos - 1) + 1;
@@ -1616,7 +1634,12 @@
       const ins = `\n${m[1]}${BOX} `;
       replaceText(ta, pos, pos, ins, pos + ins.length, pos + ins.length);
     }
-  });
+  }
+
+  for (const sel of ['#edText', '#tdBody']) {
+    $(sel).addEventListener('click', onMarkClick);
+    $(sel).addEventListener('keydown', onBoxEnter);
+  }
 
   $('#edClear').onclick = () => {
     if (!selected) return;

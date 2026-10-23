@@ -7,7 +7,7 @@
 <meta name="description" content="날짜별로 자유롭게 기록하는 개인 캘린더">
 <meta name="theme-color" content="#1f6feb">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=15">
+<link rel="stylesheet" href="assets/style.css?v=16">
 </head>
 <body>
 
@@ -126,6 +126,7 @@
     <span class="hint" id="edStatus">자동 저장됩니다</span>
     <div class="ed-actions">
       <button id="edCheck" class="ghost" title="커서가 있는 줄에 체크박스 넣기 · 한 번 더 누르면 빼기. 상자를 누르면 체크됩니다">☐ 체크박스</button>
+      <button id="edSquare" class="ghost" title="커서가 있는 줄 앞에 색 네모 넣기 · 한 번 더 누르면 빼기. 네모를 누르면 색이 바뀝니다">🟦 네모</button>
       <button id="edClear" class="ghost danger">비우기</button>
     </div>
   </div>
@@ -194,8 +195,11 @@
 
   <div class="td-tools">
     <button class="addrow" id="tdStamp" title="커서 자리에 오늘 날짜와 시각을 넣습니다">🕘 지금 시각</button>
-    <button class="addrow" id="tdAddItem">＋ 단계 추가</button>
     <span class="grow"></span>
+    <button class="addrow" id="tdCheck"
+            title="커서가 있는 줄에 체크박스 넣기 · 한 번 더 누르면 빼기. 상자를 누르면 체크됩니다">☐ 체크박스</button>
+    <button class="addrow" id="tdSquare"
+            title="커서가 있는 줄 앞에 색 네모 넣기 · 한 번 더 누르면 빼기. 네모를 누르면 색이 바뀝니다">🟦 네모</button>
     <button class="addrow" id="tdShare" hidden
             title="휴대폰 공유창을 열어 카카오톡으로 보냅니다">↗ 공유</button>
     <button class="addrow" id="tdCopy"
@@ -220,7 +224,7 @@
   </div>
 </dialog>
 
-<script src="assets/holidays.js?v=15"></script>
-<script src="assets/app.js?v=15"></script>
+<script src="assets/holidays.js?v=16"></script>
+<script src="assets/app.js?v=16"></script>
 </body>
 </html>
