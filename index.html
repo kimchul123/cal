@@ -7,7 +7,7 @@
 <meta name="description" content="날짜별로 자유롭게 기록하는 개인 캘린더">
 <meta name="theme-color" content="#1f6feb">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗓️</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=13">
+<link rel="stylesheet" href="assets/style.css?v=14">
 </head>
 <body>
 
@@ -194,6 +194,11 @@
   <div class="td-tools">
     <button class="addrow" id="tdStamp" title="커서 자리에 오늘 날짜와 시각을 넣습니다">🕘 지금 시각</button>
     <button class="addrow" id="tdAddItem">＋ 단계 추가</button>
+    <span class="grow"></span>
+    <button class="addrow" id="tdShare" hidden
+            title="휴대폰 공유창을 열어 카카오톡으로 보냅니다">↗ 공유</button>
+    <button class="addrow" id="tdCopy"
+            title="제목과 내용을 모두 복사합니다. 카카오톡에 붙여넣으세요">📋 복사</button>
   </div>
 
   <div class="td-items" id="tdItems"></div>
@@ -214,7 +219,7 @@
   </div>
 </dialog>
 
-<script src="assets/holidays.js?v=13"></script>
-<script src="assets/app.js?v=13"></script>
+<script src="assets/holidays.js?v=14"></script>
+<script src="assets/app.js?v=14"></script>
 </body>
 </html>

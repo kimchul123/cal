@@ -673,9 +673,7 @@
     if (!wrote) return false;              // 바뀐 게 없으면 저장했다고 하지 않는다
 
     tdDirty = true;
-    $('#tdStatus').textContent = '저장됨';
-    clearTimeout(flushTodo._t);
-    flushTodo._t = setTimeout(() => { $('#tdStatus').textContent = '자동 저장됩니다'; }, 1400);
+    tdFlash('저장됨');
     return true;
   }
 
@@ -1232,6 +1230,60 @@
 
   ['#tdTitle', '#tdBody'].forEach((sel) =>
     $(sel).addEventListener('input', flushTodo));
+
+  // ---------- 내보내기 (카카오톡 등) ----------
+  /** 편집창 아래 안내줄에 잠깐 띄운다 */
+  function tdFlash(msg) {
+    const el = $('#tdStatus');
+    el.textContent = msg;
+    clearTimeout(tdFlash._t);
+    tdFlash._t = setTimeout(() => { el.textContent = '자동 저장됩니다'; }, 2600);
+  }
+
+  /** 제목 + 본문 + 단계를 남에게 보낼 수 있는 글로 만든다 */
+  function todoAsText() {
+    const v = getTodo(tdOpenId);
+    if (!v) return '';
+    const steps = v.items.length
+      ? '\n\n■ 단계\n' + v.items.map((it) => `${it.done ? '☑' : '☐'} ${it.text}`).join('\n')
+      : '';
+    return `[${v.title || '할 일'}]\n\n${v.body}${steps}`.trim();
+  }
+
+  async function copyTodo() {
+    const text = todoAsText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // https 가 아니거나 권한이 없을 때를 위한 옛 방식
+      const ta = el('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* 이것도 막히면 알릴 수밖에 없다 */ }
+      ta.remove();
+    }
+    tdFlash(`${text.length}자 복사했습니다 — 카카오톡에 붙여넣으세요`);
+  }
+
+  $('#tdCopy').onclick = copyTodo;
+
+  // 휴대폰처럼 공유창이 있는 기기에서만 공유 버튼을 띄운다
+  if (navigator.share) {
+    $('#tdShare').hidden = false;
+    $('#tdShare').onclick = async () => {
+      const v = getTodo(tdOpenId);
+      if (!v) return;
+      try {
+        await navigator.share({ title: v.title || '할 일', text: todoAsText() });
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;    // 사용자가 공유창을 닫은 것뿐이다
+        copyTodo();                                   // 공유가 막히면 복사로 대신한다
+      }
+    };
+  }
 
   /* 통화·방문 기록을 적을 때 날짜를 매번 치지 않도록 커서 자리에 넣어 준다 */
   $('#tdStamp').onclick = () => {

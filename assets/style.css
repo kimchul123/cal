@@ -632,7 +632,8 @@ body.todo-view #btnPrev, body.todo-view #btnNext, body.todo-view #btnToday { dis
   resize: none; line-height: 1.75;
 }
 
-.td-tools { display: flex; gap: 4px; flex: none; margin-top: 6px; }
+.td-tools { display: flex; align-items: center; gap: 4px; flex: none; margin-top: 6px; }
+.td-tools .grow { flex: 1; }
 
 .td-items { margin-top: 4px; max-height: 24vh; overflow-y: auto; flex: none; }
 .td-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
